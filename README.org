@@ -130,9 +130,13 @@ Ok so working off of html is going to suck. There's [[https://www.mediawiki.org/
                                                       (cons 'category-name (s-trim (match-string-no-properties 1 line)))))
   
   (defun gim/cognitive-bias-deck/parse/forward-past-category-description ()
-    (gim/cognitive-bias-deck/parse/forward-line-until (line)
-                                                      (string-match "^\\w" line)
-                                                      (cons 'category-description line)))
+    (cl-loop for line = (thing-at-point 'line 't)
+             until (eobp)
+             finally return nil do
+             (if (string-match "^\\w" line)
+                 (cl-return (or (cons 'category-description line) 't)))
+             finally do (forward-line)
+             do (forward-line)))
   
   
   (iter-defun gim/cognitive-bias-deck/parse ()
