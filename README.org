@@ -126,8 +126,13 @@ Ok so working off of html is going to suck. There's [[https://www.mediawiki.org/
   
   (defun gim/cognitive-bias-deck/parse/forward-to-next-header-3 ()
     (gim/cognitive-bias-deck/parse/forward-line-until (line)
-                                                      (string-match "^===\\(.*\\)" line)
+                                                      (string-match "^===\\(.*\\)===" line)
                                                       (cons 'category-name (s-trim (match-string-no-properties 1 line)))))
+  
+  (defun gim/cognitive-bias-deck/parse/forward-past-category-description ()
+    (gim/cognitive-bias-deck/parse/forward-line-until (line)
+                                                      (string-match "^\\w" line)
+                                                      (cons 'category-description line)))
   
   
   (iter-defun gim/cognitive-bias-deck/parse ()
@@ -135,7 +140,8 @@ Ok so working off of html is going to suck. There's [[https://www.mediawiki.org/
     (cl-loop for category-name = (gim/cognitive-bias-deck/parse/forward-to-next-header-3)
              while category-name
              do (forward-line)
-             do (iter-yield category-name)))
+             do (iter-yield `(category . ((name . ,(cdr category-name))
+                                          (description . ,(cdr (gim/cognitive-bias-deck/parse/forward-past-category-description))))))))
   
   
   (with-current-buffer (get-buffer-create "*Cognitive Bias*")
@@ -151,53 +157,60 @@ Ok so working off of html is going to suck. There's [[https://www.mediawiki.org/
     (beginning-of-buffer)
   
     (iter-do (item (gim/cognitive-bias-deck/parse))
-      (print (format "> %s" item))))
+      (pp item)))
 #+end_src
 
 #+RESULTS:
 #+begin_example
-
-"> (category-name . Anchoring bias ===)"
-
-"> (category-name . Apophenia ===)"
-
-"> (category-name . Availability heuristic ===)"
-
-"> (category-name . Cognitive dissonance ===)"
-
-"> (category-name . Confirmation bias ===)"
-
-"> (category-name . Egocentric bias ===)"
-
-"> (category-name . Extension neglect ===)"
-
-"> (category-name . False priors ===)"
-
-"> (category-name . Framing effect ===)"
-
-"> (category-name . Logical fallacy ===)"
-
-"> (category-name . Prospect theory ===)"
-
-"> (category-name . Self-assessment ===)"
-
-"> (category-name . Truthiness ===)"
-
-"> (category-name . Other ===)"
-
-"> (category-name . Social===)"
-
-"> (category-name . = Association fallacy ====)"
-
-"> (category-name . = Attribution bias ====)"
-
-"> (category-name . = Conformity ====)"
-
-"> (category-name . = Ingroup bias ====)"
-
-"> (category-name . = Other social biases ====)"
-
-"> (category-name . Misattribution of memory ===)"
-
-"> (category-name . Other ===)"
+(category
+ (name . "Anchoring bias")
+ (description . "The anchoring bias, or focalism, is the tendency to rely too heavily—to \"anchor\"—on one trait or piece of information when making decisions (usually the first piece of information acquired on that subject).<ref>{{cite conference |url=http://www.aaai.org/Papers/Symposia/Fall/2007/FS-07-04/FS07-04-017.pdf |title=A Preliminary Research on Modeling Cognitive Agents for Social Environments in Multi-Agent Systems |conference=2007 AAAI Fall Symposium: Emergent agents and socialities: Social and organizational aspects of intelligence |website=Association for the Advancement of Artificial Intelligence |vauthors=Zhang Y, Lewis M, Pellon M, Coleman P |pages=116–123|year=2007}}</ref><ref name=\"iverson2008\" />\n"))
+(category
+ (name . "Apophenia")
+ (description . "The tendency to perceive meaningful connections between unrelated things.<ref name=skepdic>{{cite web|title=apophenia|author=Carroll, Robert T.|url=http://skepdic.com/apophenia.html|website=The Skeptic's Dictionary|access-date=17 July 2017}}</ref>\n"))
+(category
+ (name . "Availability heuristic")
+ (description . "The availability heuristic (also known as the availability bias) is the tendency to overestimate the likelihood of events with greater \"availability\" in memory, which can be influenced by how recent the memories are or how unusual or emotionally charged they may be.<ref>{{cite journal |last1=Schwarz |first1=N. |last2=Bless |first2=Herbert |last3=Strack |first3=Fritz |last4=Klumpp |first4=G. |last5=Rittenauer-Schatka |first5=Helga |last6=Simons |first6=Annette | name-list-style = vanc|date=1991 |title=Ease of Retrieval as Information: Another Look at the Availability Heuristic |journal=Journal of Personality and Social Psychology |doi=10.1037/0022-3514.61.2.195 |volume=61 |issue=2 |pages=195–202 |url=http://osil.psy.ua.edu:16080/~Rosanna/Soc_Inf/week4/availability.pdf |access-date=19 Oct 2014 |archive-url=https://web.archive.org/web/20140209175640/http://osil.psy.ua.edu:16080/~Rosanna/Soc_Inf/week4/availability.pdf|archive-date=9 February 2014|url-status=dead}}</ref> The availability heuristic includes or involves the following:\n"))
+(category
+ (name . "Cognitive dissonance")
+ (description . "Confirmation bias is the tendency to search for, interpret, focus on and remember information in a way that confirms one's preconceptions.<ref>{{cite book |last1=Oswald |first1=Margit E. |title=Cognitive Illusions: A Handbook on Fallacies and Biases in Thinking, Judgement and Memory |last2=Grosjean |first2=Stefan |publisher=Psychology Press |year=2004 |isbn=978-1-84169-351-4 |editor-last=Pohl |editor-first=Rüdiger F. |location=Hove, UK |pages=[https://archive.org/details/cognitiveillusio0000unse/page/79 79–96] |chapter=Confirmation Bias |oclc=55124398 |chapter-url=https://archive.org/details/cognitiveillusio0000unse/page/79 |name-list-style=vanc |via=archive.org}}</ref> There are multiple other cognitive biases which involve or are types of confirmation bias:\n"))
+(category
+ (name . "Egocentric bias")
+ (description . "'''Egocentric bias''' is the tendency to rely too heavily on one's own perspective and/or have a higher opinion of oneself than reality.<ref>{{cite book|last1=Schacter|first1=Daniel L.|last2=Gilbert|first2=Daniel T.|last3=Wegner|first3=Daniel M.|title=Psychology|date=2011|edition=2nd|publisher=Macmillan|isbn=978-1-4292-3719-2|page=254|url=https://books.google.com/books?id=emAyzTNy1cUC|language=en}}</ref> The following are forms of egocentric bias:\n"))
+(category
+ (name . "Extension neglect")
+ (description . "The following are forms of extension neglect:\n"))
+(category
+ (name . "False priors")
+ (description . "Biases based on false priors include:\n"))
+(category
+ (name . "Framing effect")
+ (description . "The framing effect is the tendency to draw different conclusions from the same information, depending on how that information is presented. Forms of the framing effect include:\n"))
+(category
+ (name . "Logical fallacy")
+ (description . "Logical fallacy biases include:\n"))
+(category
+ (name . "Prospect theory")
+ (description . "The following relate to prospect theory:\n"))
+(category
+ (name . "Self-assessment")
+ (description . "Association fallacies include:\n"))
+(category
+ (name . "= Attribution bias =")
+ (description . "Attribution bias includes:\n"))
+(category
+ (name . "= Conformity =")
+ (description . "Conformity is involved in the following:\n"))
+(category
+ (name . "= Ingroup bias =")
+ (description . "Ingroup bias is the tendency for people to give preferential treatment to others they perceive to be members of their own groups. It is related to the following:\n"))
+(category
+ (name . "= Other social biases =")
+ (description . "In [[psychology]] and [[cognitive science]], a memory bias is a [[cognitive bias]] that either enhances or impairs the recall of a [[memory]] (either the chances that the memory will be recalled at all, or the amount of time it takes for it to be recalled, or both), or that alters the content of a reported memory. There are many types of memory bias, including:\n"))
+(category
+ (name . "Misattribution of memory")
+ (description . "The misattributions include:\n"))
+(category
+ (name . "Other")
+ (description))
 #+end_example
