@@ -1,0 +1,203 @@
+
+An [[id:e4001525-d16c-4632-afc9-0813bf574b4b][Anki]] deck to memorize information about cognitive bias
+
+* Plan
+Due to my [[id:a3af9090-a8e6-4e7a-9d49-a26d9d220c97][Tech Terms]] Project I should already have the code to go from an org table to an Anki Deck
+
+So where is going to be our data source?
+
+- There is [[https://upload.wikimedia.org/wikipedia/commons/6/65/Cognitive_bias_codex_en.svg?ref=insanelyusefulwebsites&utm_source=pocket_mylist][this great svg file]]
+- But [[https://en.wikipedia.org/wiki/List_of_cognitive_biases][this wikipedia list looks even better]]
+
+I guess you can actually pull that second one into a buffer and then use [[https://github.com/AdamNiederer/elquery][elquery]] within [[id:3cf50942-d434-4726-b56b-7749839090d7][Emacs]]. 
+
+Though actually maybe even you can do it with [[https://github.com/tree-sitter/tree-sitter-html][tree-sitter]]
+
+* Playground
+
+  First lets try to open up a buffer and load it with that html
+  
+  This is interesting, but it results in just the text of the page layed out visually, not html...which is a rather interesting ability
+  
+#+begin_src emacs-lisp
+  (eww-browse-url "https://en.wikipedia.org/wiki/List_of_cognitive_biases")
+  (html-mode)
+  (rename-buffer "*Cognitive Biases*")
+#+end_src
+
+
+#+begin_src emacs-lisp :results silent
+  (require 'request)
+  (with-current-buffer (get-buffer-create "*Cognitive Bias*")
+    (->> (request "https://en.wikipedia.org/wiki/List_of_cognitive_biases"
+           :sync 't)
+         request-response-data
+         insert)
+    (html-mode))
+#+end_src
+
+That's not bad, but tree-sitter just looks like stuff like this
+
+#+begin_quote
+        self_closing_tag:
+          tag_name:
+          attribute:
+            attribute_name:
+            quoted_attribute_value:
+              attribute_value:
+          attribute:
+            attribute_name:
+            quoted_attribute_value:
+              attribute_value:
+#+end_quote
+
+That can still totally be filtered but surely something else is better
+
+And looks like elquery would even skip that and just let us fetch a parsed three from a url
+
+So how do we do this with that?
+#+begin_src emacs-lisp
+  (require 'elquery)
+  (->> (elquery-read-buffer "*Cognitive Bias*")
+       (elquery-$ "h3")
+       (nth 15)
+       elquery-full-text)
+#+end_src
+
+#+RESULTS:
+: Availability heuristic[edit]
+
+Ok so working off of html is going to suck. There's [[https://www.mediawiki.org/wiki/API:Get_the_contents_of_a_page][some apis available though]]
+
+#+begin_src emacs-lisp :results silent
+  (require 'request)
+  
+  (iter-defun gim/cognitive-bias-deck/parse ()
+    "Parse the current buffer and generate tree of nodes. Returns an iterator."
+    (while (not (eobp))
+      (forward-line)))
+  
+  
+  
+  (with-current-buffer (get-buffer-create "*Cognitive Bias*")
+    (erase-buffer)
+    (mediawiki-mode)
+    (let ((wikitext (->> (request "https://en.wikipedia.org/w/api.php?action=parse&page=List_of_cognitive_biases&prop=wikitext&formatversion=2&format=json"
+                           :sync 't)
+                         request-response-data
+                         json-parse-string
+                         (gethash "parse")
+                         (gethash "wikitext"))))
+      (insert wikitext)
+      (beginning-of-buffer)
+      (while (not (mediawiki-next-header))
+        (message  "At header %s" (thing-at-point 'line))
+        (let* ((header-title-point (point))
+               (end-of-header-point (if (mediawiki-next-header)
+                                        (point-max)
+                                        (forward-line -1)
+                                        (point)
+                                        (mediawiki-prev-header))))
+          (message "From %s to %s" header-title-point end-of-header-point)))))
+  
+  
+  ;; (while (not (eobp))
+  ;;   (when (looking-at-p "^\*")
+  ;;     (message  (thing-at-point 'line)))
+  ;;   (forward-line))))
+#+end_src
+
+#+begin_src emacs-lisp :results output :lexical yes
+  (require 'request)
+  
+  (defmacro gim/cognitive-bias-deck/parse/forward-line-until (variable-names test-line-p operate-on-line)
+    "forward-line until test-line-p (return evaluation of operate-on-line or 't) or end of buffer (return nil). Line variable is bound to first symbol in variable-names similar to function declarations.
+  
+    (when (gim/cognitive-bias-deck/parse/forward-line-until (line)
+                                                            (string-match \"^===\\(.*\\)\" line)
+                                                            (message (s-trim (match-string-no-properties 1 line)))))"
+    (let ((line-var (car variable-names)))
+      `(cl-loop for ,line-var = (thing-at-point 'line 't)
+                until (eobp)
+                finally return nil
+                do (if ,test-line-p
+                       (cl-return (or ,operate-on-line 't)))
+                do (forward-line))))
+  
+  (defun gim/cognitive-bias-deck/parse/forward-to-next-header-3 ()
+    (gim/cognitive-bias-deck/parse/forward-line-until (line)
+                                                      (string-match "^===\\(.*\\)" line)
+                                                      (cons 'category-name (s-trim (match-string-no-properties 1 line)))))
+  
+  
+  (iter-defun gim/cognitive-bias-deck/parse ()
+    "Parse the current buffer and generate tree of nodes. Returns an iterator."
+    (cl-loop for category-name = (gim/cognitive-bias-deck/parse/forward-to-next-header-3)
+             while category-name
+             do (forward-line)
+             do (iter-yield category-name)))
+  
+  
+  (with-current-buffer (get-buffer-create "*Cognitive Bias*")
+    (erase-buffer)
+    (mediawiki-mode)
+    (->> (request "https://en.wikipedia.org/w/api.php?action=parse&page=List_of_cognitive_biases&prop=wikitext&formatversion=2&format=json"
+           :sync 't)
+         request-response-data
+         json-parse-string
+         (gethash "parse")
+         (gethash "wikitext")
+         insert)
+    (beginning-of-buffer)
+  
+    (iter-do (item (gim/cognitive-bias-deck/parse))
+      (print (format "> %s" item))))
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+"> (category-name . Anchoring bias ===)"
+
+"> (category-name . Apophenia ===)"
+
+"> (category-name . Availability heuristic ===)"
+
+"> (category-name . Cognitive dissonance ===)"
+
+"> (category-name . Confirmation bias ===)"
+
+"> (category-name . Egocentric bias ===)"
+
+"> (category-name . Extension neglect ===)"
+
+"> (category-name . False priors ===)"
+
+"> (category-name . Framing effect ===)"
+
+"> (category-name . Logical fallacy ===)"
+
+"> (category-name . Prospect theory ===)"
+
+"> (category-name . Self-assessment ===)"
+
+"> (category-name . Truthiness ===)"
+
+"> (category-name . Other ===)"
+
+"> (category-name . Social===)"
+
+"> (category-name . = Association fallacy ====)"
+
+"> (category-name . = Attribution bias ====)"
+
+"> (category-name . = Conformity ====)"
+
+"> (category-name . = Ingroup bias ====)"
+
+"> (category-name . = Other social biases ====)"
+
+"> (category-name . Misattribution of memory ===)"
+
+"> (category-name . Other ===)"
+#+end_example
