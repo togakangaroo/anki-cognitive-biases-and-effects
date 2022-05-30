@@ -118,34 +118,54 @@ Ok so working off of html is going to suck. There's [[https://www.mediawiki.org/
               ,@other-clauses
               do (forward-line)))
   
+  
   (defun gim/cognitive-bias-deck/parse/forward-to-next-header-3 ()
     (gim/cognitive-bias-deck/parse/for-each-line if (string-match "^===\\([^=]*\\)===" line)
                                                  return (cons 'category-name (s-trim (match-string-no-properties 1 line)))))
   
   (defun gim/cognitive-bias-deck/parse/forward-past-category-description ()
     (gim/cognitive-bias-deck/parse/for-each-line
-             if (string-match "^\\w" line)
-             return (cons 'category-description line)
-             finally do (forward-line)))
+     if (string-match "^\\w" line)
+     return (cons 'category-description line)
+     finally do (forward-line)))
   
   (iter-defun gim/cognitive-bias-deck/parse/forward-past-list ()
     (gim/cognitive-bias-deck/parse/for-each-line
-      while (string-match "^\*\\(.+\\)" line)
-      do (iter-yield `(bias . ,line))
-      finally do (forward-line)))
+     while (string-match "^\*\\(.+\\)" line)
+     do (iter-yield `(line . ,line))
+     finally do (forward-line)))
   
+  ; TODO - This would be better as "to next list item or heading"
   (defun gim/cognitive-bias-deck/parse/forward-to-next-list-item ()
     (gim/cognitive-bias-deck/parse/for-each-line until (string-match "^\*" line)))
+  
+  
+  (defun gim/cognitive-bias-deck/parse/parse-bias (line)
+    (pcase-let ((`(line . ,text) line))
+      (when (string-match (rx line-start
+                              "*"
+                              (zero-or-more space)
+                              "[["
+                              (group-n 1 (zero-or-more (not "]")))
+                              "]]"
+                              (zero-or-one ",")
+                              (zero-or-more space)
+                              (group-n 2 (one-or-more anything)))
+                          text)
+            `(bias . ((name . ,(match-string-no-properties 1 text))
+                      (description . ,(match-string-no-properties 2 text)))))))
+  
   
   (iter-defun gim/cognitive-bias-deck/parse ()
     "Parse the current buffer and generate tree of nodes. Returns an iterator."
     (cl-loop for category-name = (gim/cognitive-bias-deck/parse/forward-to-next-header-3)
              while category-name
-             with category-description = (gim/cognitive-bias-deck/parse/forward-past-category-description)
-             do (gim/cognitive-bias-deck/parse/forward-to-next-list-item)
-             do (iter-yield `(category . ((name . ,(cdr category-name))
-                                          (description . ,(car category-description))
-                                          (biases . ,(cl-loop for b iter-by (gim/cognitive-bias-deck/parse/forward-past-list) collect b)))))))
+             do (-let ((category-description (gim/cognitive-bias-deck/parse/forward-past-category-description)))
+                  (gim/cognitive-bias-deck/parse/forward-to-next-list-item)
+                  (iter-yield `(category . ((name . ,(cdr category-name))
+                                            (description . ,(cdr category-description))
+                                            (biases . ,(cl-loop for b iter-by (gim/cognitive-bias-deck/parse/forward-past-list)
+                                                                collect (gim/cognitive-bias-deck/parse/parse-bias b)))))))))
   
   
   (with-current-buffer (get-buffer-create "*Cognitive Bias*")
@@ -168,197 +188,306 @@ Ok so working off of html is going to suck. There's [[https://www.mediawiki.org/
 #+begin_example
 (category
  (name . "Anchoring bias")
- (description . category-description)
+ (description . "The anchoring bias, or focalism, is the tendency to rely too heavily—to \"anchor\"—on one trait or piece of information when making decisions (usually the first piece of information acquired on that subject).<ref>{{cite conference |url=http://www.aaai.org/Papers/Symposia/Fall/2007/FS-07-04/FS07-04-017.pdf |title=A Preliminary Research on Modeling Cognitive Agents for Social Environments in Multi-Agent Systems |conference=2007 AAAI Fall Symposium: Emergent agents and socialities: Social and organizational aspects of intelligence |website=Association for the Advancement of Artificial Intelligence |vauthors=Zhang Y, Lewis M, Pellon M, Coleman P |pages=116–123|year=2007}}</ref><ref name=\"iverson2008\" />\n")
  (biases
-  (bias . "*[[Common source bias]], the tendency to combine or compare research studies from the same source, or from sources that use the same methodologies or data.<ref>{{cite journal |last1=Kim |first1=Mirae |last2=Daniel |first2=Jamie Levine |date=2020-01-02 |title=Common Source Bias, Key Informants, and Survey-Administrative Linked Data for Nonprofit Management Research |url=https://www.tandfonline.com/doi/full/10.1080/15309576.2019.1657915 |journal=Public Performance & Management Review |volume=43 |issue=1 |pages=232–256 |doi=10.1080/15309576.2019.1657915 |issn=1530-9576 |url-access=subscription |access-date=23 June 2021 |s2cid=203468837}}</ref>\n")
-  (bias . "*[[Conservatism (belief revision)|Conservatism bias]], the tendency to insufficiently [[belief revision|revise one's belief]] when presented with new evidence.<ref name=\"HilbertPsychBul\" /><ref>{{cite journal | vauthors = DuCharme WW |year=1970 |title=Response bias explanation of conservative human inference |journal=Journal of Experimental Psychology |volume=85 |issue=1|pages=66–74 |doi=10.1037/h0029546|hdl=2060/19700009379 |hdl-access=free }}</ref><ref name=\"edwards1968\">{{cite book| vauthors = Edwards W |year=1968|chapter=Conservatism in human information processing| veditors = Kleinmuntz B |title=Formal representation of human judgment|pages=17–52|location=New York|publisher=Wiley}}</ref>\n")
-  (bias . "*[[Functional fixedness]], a tendency limiting a person to using an object only in the way it is traditionally used.<ref>{{Cite news|url=https://psychologenie.com/what-does-functional-fixedness-mean-in-psychology|title=The Psychology Guide: What Does Functional Fixedness Mean?|work=PsycholoGenie|access-date=2018-10-10|language=en-US}}</ref>\n")
-  (bias . "*[[Law of the instrument]], an over-reliance on a familiar tool or methods, ignoring or under-valuing alternative approaches. \"If all you have is a hammer, everything looks like a nail.\"\n")))
+  (bias
+   (name . "Common source bias")
+   (description . "the tendency to combine or compare research studies from the same source, or from sources that use the same methodologies or data.<ref>{{cite journal |last1=Kim |first1=Mirae |last2=Daniel |first2=Jamie Levine |date=2020-01-02 |title=Common Source Bias, Key Informants, and Survey-Administrative Linked Data for Nonprofit Management Research |url=https://www.tandfonline.com/doi/full/10.1080/15309576.2019.1657915 |journal=Public Performance & Management Review |volume=43 |issue=1 |pages=232–256 |doi=10.1080/15309576.2019.1657915 |issn=1530-9576 |url-access=subscription |access-date=23 June 2021 |s2cid=203468837}}</ref>\n"))
+  (bias
+   (name . "Conservatism (belief revision)|Conservatism bias")
+   (description . "the tendency to insufficiently [[belief revision|revise one's belief]] when presented with new evidence.<ref name=\"HilbertPsychBul\" /><ref>{{cite journal | vauthors = DuCharme WW |year=1970 |title=Response bias explanation of conservative human inference |journal=Journal of Experimental Psychology |volume=85 |issue=1|pages=66–74 |doi=10.1037/h0029546|hdl=2060/19700009379 |hdl-access=free }}</ref><ref name=\"edwards1968\">{{cite book| vauthors = Edwards W |year=1968|chapter=Conservatism in human information processing| veditors = Kleinmuntz B |title=Formal representation of human judgment|pages=17–52|location=New York|publisher=Wiley}}</ref>\n"))
+  (bias
+   (name . "Functional fixedness")
+   (description . "a tendency limiting a person to using an object only in the way it is traditionally used.<ref>{{Cite news|url=https://psychologenie.com/what-does-functional-fixedness-mean-in-psychology|title=The Psychology Guide: What Does Functional Fixedness Mean?|work=PsycholoGenie|access-date=2018-10-10|language=en-US}}</ref>\n"))
+  (bias
+   (name . "Law of the instrument")
+   (description . "an over-reliance on a familiar tool or methods, ignoring or under-valuing alternative approaches. \"If all you have is a hammer, everything looks like a nail.\"\n"))))
 (category
  (name . "Apophenia")
- (description . category-description)
+ (description . "The tendency to perceive meaningful connections between unrelated things.<ref name=skepdic>{{cite web|title=apophenia|author=Carroll, Robert T.|url=http://skepdic.com/apophenia.html|website=The Skeptic's Dictionary|access-date=17 July 2017}}</ref>\n")
  (biases
-  (bias . "*[[Clustering illusion]], the tendency to overestimate the importance of small runs, streaks, or clusters in large samples of random data (that is, seeing phantom patterns).<ref name=\"iverson2008\">{{cite book| veditors = Heilbronner RL | vauthors = Iverson GL, Brooks BL, Holdnack JA |chapter=Misdiagnosis of Cognitive Impairment in Forensic Neuropsychology|title=Neuropsychology in the Courtroom: Expert Analysis of Reports and Testimony|year=2008|publisher=Guilford Press|location=New York|isbn=9781593856342|page=248}}</ref>\n")
-  (bias . "*[[Illusory correlation]], a tendency to inaccurately perceive a relationship between two unrelated events.<ref name=\"h_and_b\">{{cite journal | vauthors = Tversky A, Kahneman D | title = Judgment under Uncertainty: Heuristics and Biases | journal = Science | volume = 185 | issue = 4157 | pages = 1124–31 | date = September 1974 | pmid = 17835457 | doi = 10.1126/science.185.4157.1124 | bibcode = 1974Sci...185.1124T | s2cid = 143452957 }}</ref><ref name=\"ReferenceB\">{{cite journal | vauthors = Fiedler K |year=1991 |title=The tricky nature of skewed frequency tables: An information loss account of distinctiveness-based illusory correlations |journal=Journal of Personality and Social Psychology |volume=60 |issue=1 |pages=24–36 |doi=10.1037/0022-3514.60.1.24}}</ref>\n")
-  (bias . "*[[Pareidolia]], a tendency to perceive a vague and random stimulus (often an image or sound) as significant, e.g., seeing images of animals or faces in clouds, the [[man in the moon]], and hearing non-existent [[hidden message]]s on [[Backmasking|records played in reverse]].\n")))
+  (bias
+   (name . "Clustering illusion")
+   (description . "the tendency to overestimate the importance of small runs, streaks, or clusters in large samples of random data (that is, seeing phantom patterns).<ref name=\"iverson2008\">{{cite book| veditors = Heilbronner RL | vauthors = Iverson GL, Brooks BL, Holdnack JA |chapter=Misdiagnosis of Cognitive Impairment in Forensic Neuropsychology|title=Neuropsychology in the Courtroom: Expert Analysis of Reports and Testimony|year=2008|publisher=Guilford Press|location=New York|isbn=9781593856342|page=248}}</ref>\n"))
+  (bias
+   (name . "Illusory correlation")
+   (description . "a tendency to inaccurately perceive a relationship between two unrelated events.<ref name=\"h_and_b\">{{cite journal | vauthors = Tversky A, Kahneman D | title = Judgment under Uncertainty: Heuristics and Biases | journal = Science | volume = 185 | issue = 4157 | pages = 1124–31 | date = September 1974 | pmid = 17835457 | doi = 10.1126/science.185.4157.1124 | bibcode = 1974Sci...185.1124T | s2cid = 143452957 }}</ref><ref name=\"ReferenceB\">{{cite journal | vauthors = Fiedler K |year=1991 |title=The tricky nature of skewed frequency tables: An information loss account of distinctiveness-based illusory correlations |journal=Journal of Personality and Social Psychology |volume=60 |issue=1 |pages=24–36 |doi=10.1037/0022-3514.60.1.24}}</ref>\n"))
+  (bias
+   (name . "Pareidolia")
+   (description . "a tendency to perceive a vague and random stimulus (often an image or sound) as significant, e.g., seeing images of animals or faces in clouds, the [[man in the moon]], and hearing non-existent [[hidden message]]s on [[Backmasking|records played in reverse]].\n"))))
 (category
  (name . "Availability heuristic")
- (description . category-description)
+ (description . "The availability heuristic (also known as the availability bias) is the tendency to overestimate the likelihood of events with greater \"availability\" in memory, which can be influenced by how recent the memories are or how unusual or emotionally charged they may be.<ref>{{cite journal |last1=Schwarz |first1=N. |last2=Bless |first2=Herbert |last3=Strack |first3=Fritz |last4=Klumpp |first4=G. |last5=Rittenauer-Schatka |first5=Helga |last6=Simons |first6=Annette | name-list-style = vanc|date=1991 |title=Ease of Retrieval as Information: Another Look at the Availability Heuristic |journal=Journal of Personality and Social Psychology |doi=10.1037/0022-3514.61.2.195 |volume=61 |issue=2 |pages=195–202 |url=http://osil.psy.ua.edu:16080/~Rosanna/Soc_Inf/week4/availability.pdf |access-date=19 Oct 2014 |archive-url=https://web.archive.org/web/20140209175640/http://osil.psy.ua.edu:16080/~Rosanna/Soc_Inf/week4/availability.pdf|archive-date=9 February 2014|url-status=dead}}</ref> The availability heuristic includes or involves the following:\n")
  (biases
-  (bias . "*[[Anthropocentric thinking]], the tendency to use human analogies as a basis for reasoning about other, less familiar, biological phenomena.<ref name=\"Coley2012\">{{cite journal|vauthors=Coley JD, Tanner KD|date=2012|title=Common origins of diverse misconceptions: cognitive principles and the development of biology thinking|journal=CBE: Life Sciences Education|volume=11|issue=3|pages=209–15|doi=10.1187/cbe.12-06-0074|pmc=3433289|pmid=22949417}}</ref>\n")
-  (bias . "*[[Anthropomorphism#Psychology|Anthropomorphism]] or personification, the tendency to characterize animals, objects, and abstract concepts as possessing human-like traits, emotions, and intentions.<ref>{{cite web|title=The Real Reason We Dress Pets Like People|url=http://www.livescience.com/6141-real-reason-dress-pets-people.html|access-date=2015-11-16|website=LiveScience.com|date=3 March 2010}}</ref> The opposite bias, of not attributing feelings or thoughts to another person, is [[dehumanization|dehumanised perception]],<ref>{{cite journal|vauthors=Harris LT, Fiske ST|date=January 2011|title=Dehumanized Perception: A Psychological Means to Facilitate Atrocities, Torture, and Genocide?|journal=Zeitschrift für Psychologie|volume=219|issue=3|pages=175–181|doi=10.1027/2151-2604/a000065|pmc=3915417|pmid=24511459}}</ref> a type of [[objectification]].\n")
-  (bias . "*[[Attentional bias]], the tendency of perception to be affected by recurring thoughts.<ref name=\"pmid17201568\">{{cite journal | vauthors = Bar-Haim Y, Lamy D, Pergamin L, Bakermans-Kranenburg MJ, van IJzendoorn MH | title = Threat-related attentional bias in anxious and nonanxious individuals: a meta-analytic study | journal = Psychological Bulletin | volume = 133 | issue = 1 | pages = 1–24 | date = January 2007 | pmid = 17201568 | doi = 10.1037/0033-2909.133.1.1 | s2cid = 2861872 | url = https://semanticscholar.org/paper/a1dac59f17e3643755b61c737e601696b7e729bb }}</ref>\n")
-  (bias . "*[[Frequency illusion]] or [[Baader–Meinhof phenomenon]]. The frequency illusion is that once something has been noticed then every instance of that thing is noticed, leading to the belief it has a high frequency of occurrence (a form of [[selection bias]]).<ref name=\"zwicky\">{{cite web |url=http://itre.cis.upenn.edu/~myl/languagelog/archives/002386.html |author-link=Arnold Zwicky |last=Zwicky |first=Arnold | name-list-style = vanc |title=Just Between Dr. Language and I |work=Language Log |date=2005-08-07}}</ref> The Baader–Meinhof phenomenon is the illusion where something that has recently come to one's attention suddenly seems to appear with improbable frequency shortly afterwards.<ref>{{Cite web |last=Bellows |first=Alan |date=March 2006 |title=The Baader-Meinhof Phenomenon |url=https://www.damninteresting.com/the-baader-meinhof-phenomenon/ |access-date=2020-02-16 |website=Damn Interesting |language=en-US}}</ref><ref>{{cite web |last=Kershner |first=Kate |date=20 March 2015 |title=What's the Baader-Meinhof phenomenon? |url=https://science.howstuffworks.com/life/inside-the-mind/human-brain/baader-meinhof-phenomenon.htm |access-date=15 April 2018 |website=howstuffworks.com}}</ref> It was named after an incidence of frequency illusion in which the [[Red Army Faction|Baader–Meinhof Group]] was mentioned.<ref>{{cite web |title=The Baader-Meinhof Phenomenon? Or: The Joy Of Juxtaposition? |url=https://www.twincities.com/2007/02/23/the-baader-meinhof-phenomenon-or-the-joy-of-juxtaposition-responsorial-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23/ |website=twincities.com |date=23 February 2007 |publisher=[[St. Paul Pioneer Press]] |access-date=October 20, 2020 |quote=As you might guess, the phenomenon is named after an incident in which I was talking to a friend about the Baader-Meinhof gang (and this was many years after they were in the news). The next day, my friend phoned me and referred me to an article in that day's newspaper in which the Baader-Meinhof gang was mentioned.}}</ref>\n")
-  (bias . "*[[Implicit association test|Implicit association]], where the speed with which people can match words depends on how closely they are associated.\n")
-  (bias . "*[[Salience bias]], the tendency to focus on items that are more prominent or emotionally striking and ignore those that are unremarkable, even though this difference is often irrelevant by objective standards.\n")
-  (bias . "*[[Selection bias]], which happens when the members of a [[sample (statistics)|statistical sample]] are not chosen completely at random, which leads to the sample not being representative of the population.\n")
-  (bias . "*[[Survivorship bias]], which is concentrating on the people or things that \"survived\" some process and inadvertently overlooking those that did not because of their lack of visibility.\n")
-  (bias . "*[[Well travelled road effect]], the tendency to underestimate the duration taken to traverse oft-travelled routes and overestimate the duration taken to traverse less familiar routes.\n")))
+  (bias
+   (name . "Anthropocentric thinking")
+   (description . "the tendency to use human analogies as a basis for reasoning about other, less familiar, biological phenomena.<ref name=\"Coley2012\">{{cite journal|vauthors=Coley JD, Tanner KD|date=2012|title=Common origins of diverse misconceptions: cognitive principles and the development of biology thinking|journal=CBE: Life Sciences Education|volume=11|issue=3|pages=209–15|doi=10.1187/cbe.12-06-0074|pmc=3433289|pmid=22949417}}</ref>\n"))
+  (bias
+   (name . "Anthropomorphism#Psychology|Anthropomorphism")
+   (description . "or personification, the tendency to characterize animals, objects, and abstract concepts as possessing human-like traits, emotions, and intentions.<ref>{{cite web|title=The Real Reason We Dress Pets Like People|url=http://www.livescience.com/6141-real-reason-dress-pets-people.html|access-date=2015-11-16|website=LiveScience.com|date=3 March 2010}}</ref> The opposite bias, of not attributing feelings or thoughts to another person, is [[dehumanization|dehumanised perception]],<ref>{{cite journal|vauthors=Harris LT, Fiske ST|date=January 2011|title=Dehumanized Perception: A Psychological Means to Facilitate Atrocities, Torture, and Genocide?|journal=Zeitschrift für Psychologie|volume=219|issue=3|pages=175–181|doi=10.1027/2151-2604/a000065|pmc=3915417|pmid=24511459}}</ref> a type of [[objectification]].\n"))
+  (bias
+   (name . "Attentional bias")
+   (description . "the tendency of perception to be affected by recurring thoughts.<ref name=\"pmid17201568\">{{cite journal | vauthors = Bar-Haim Y, Lamy D, Pergamin L, Bakermans-Kranenburg MJ, van IJzendoorn MH | title = Threat-related attentional bias in anxious and nonanxious individuals: a meta-analytic study | journal = Psychological Bulletin | volume = 133 | issue = 1 | pages = 1–24 | date = January 2007 | pmid = 17201568 | doi = 10.1037/0033-2909.133.1.1 | s2cid = 2861872 | url = https://semanticscholar.org/paper/a1dac59f17e3643755b61c737e601696b7e729bb }}</ref>\n"))
+  (bias
+   (name . "Frequency illusion")
+   (description . "or [[Baader–Meinhof phenomenon]]. The frequency illusion is that once something has been noticed then every instance of that thing is noticed, leading to the belief it has a high frequency of occurrence (a form of [[selection bias]]).<ref name=\"zwicky\">{{cite web |url=http://itre.cis.upenn.edu/~myl/languagelog/archives/002386.html |author-link=Arnold Zwicky |last=Zwicky |first=Arnold | name-list-style = vanc |title=Just Between Dr. Language and I |work=Language Log |date=2005-08-07}}</ref> The Baader–Meinhof phenomenon is the illusion where something that has recently come to one's attention suddenly seems to appear with improbable frequency shortly afterwards.<ref>{{Cite web |last=Bellows |first=Alan |date=March 2006 |title=The Baader-Meinhof Phenomenon |url=https://www.damninteresting.com/the-baader-meinhof-phenomenon/ |access-date=2020-02-16 |website=Damn Interesting |language=en-US}}</ref><ref>{{cite web |last=Kershner |first=Kate |date=20 March 2015 |title=What's the Baader-Meinhof phenomenon? |url=https://science.howstuffworks.com/life/inside-the-mind/human-brain/baader-meinhof-phenomenon.htm |access-date=15 April 2018 |website=howstuffworks.com}}</ref> It was named after an incidence of frequency illusion in which the [[Red Army Faction|Baader–Meinhof Group]] was mentioned.<ref>{{cite web |title=The Baader-Meinhof Phenomenon? Or: The Joy Of Juxtaposition? |url=https://www.twincities.com/2007/02/23/the-baader-meinhof-phenomenon-or-the-joy-of-juxtaposition-responsorial-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23-23/ |website=twincities.com |date=23 February 2007 |publisher=[[St. Paul Pioneer Press]] |access-date=October 20, 2020 |quote=As you might guess, the phenomenon is named after an incident in which I was talking to a friend about the Baader-Meinhof gang (and this was many years after they were in the news). The next day, my friend phoned me and referred me to an article in that day's newspaper in which the Baader-Meinhof gang was mentioned.}}</ref>\n"))
+  (bias
+   (name . "Implicit association test|Implicit association")
+   (description . "where the speed with which people can match words depends on how closely they are associated.\n"))
+  (bias
+   (name . "Salience bias")
+   (description . "the tendency to focus on items that are more prominent or emotionally striking and ignore those that are unremarkable, even though this difference is often irrelevant by objective standards.\n"))
+  (bias
+   (name . "Selection bias")
+   (description . "which happens when the members of a [[sample (statistics)|statistical sample]] are not chosen completely at random, which leads to the sample not being representative of the population.\n"))
+  (bias
+   (name . "Survivorship bias")
+   (description . "which is concentrating on the people or things that \"survived\" some process and inadvertently overlooking those that did not because of their lack of visibility.\n"))
+  (bias
+   (name . "Well travelled road effect")
+   (description . "the tendency to underestimate the duration taken to traverse oft-travelled routes and overestimate the duration taken to traverse less familiar routes.\n"))))
 (category
  (name . "Cognitive dissonance")
- (description . category-description)
+ (description . "Confirmation bias is the tendency to search for, interpret, focus on and remember information in a way that confirms one's preconceptions.<ref>{{cite book |last1=Oswald |first1=Margit E. |title=Cognitive Illusions: A Handbook on Fallacies and Biases in Thinking, Judgement and Memory |last2=Grosjean |first2=Stefan |publisher=Psychology Press |year=2004 |isbn=978-1-84169-351-4 |editor-last=Pohl |editor-first=Rüdiger F. |location=Hove, UK |pages=[https://archive.org/details/cognitiveillusio0000unse/page/79 79–96] |chapter=Confirmation Bias |oclc=55124398 |chapter-url=https://archive.org/details/cognitiveillusio0000unse/page/79 |name-list-style=vanc |via=archive.org}}</ref> There are multiple other cognitive biases which involve or are types of confirmation bias:\n")
  (biases
-  (bias . "*The [[Normalcy bias]], a form of [[cognitive dissonance]], is the refusal to plan for, or react to, a disaster which has never happened before.\n")
-  (bias . "*[[Effort justification]] is a person's tendency to attribute greater value to an outcome if they had to put effort into achieving it. This can result in more value being applied to an outcome than it actually has. An example of this is the [[IKEA effect]], the tendency for people to place a disproportionately high value on objects that they partially assembled themselves, such as furniture from [[IKEA]], regardless of the quality of the end product.<ref>Michael I. Norton, Daniel Mochon, Dan Ariely (2011). [https://www.hbs.edu/faculty/Publication%20Files/11-091.pdf The \"IKEA Effect\": When Labor Leads to Love]. Harvard Business School</ref>\n")
-  (bias . "*[[Ben Franklin effect]], where a person who has performed a favor for someone is more likely to do another favor for that person than they would be if they had ''received'' a favor from that person.<ref>{{Cite news |last=Lebowitz |first=Shana |date=2 December 2016 |title=Harness the power of the 'Ben Franklin Effect' to get someone to like you |work=Business Insider |url=https://www.businessinsider.in/Harness-the-power-of-the-Ben-Franklin-Effect-to-get-someone-to-like-you/articleshow/55757370.cms |access-date=2018-10-10}}</ref>\n")))
-(category
- (name . "Confirmation bias")
- (description . category-description)
- (biases
-  (bias . "*[[Backfire effect]], a tendency to react to disconfirming evidence by strengthening one's previous beliefs.<ref name=\"SannaSchwarz2002\">{{cite journal|last1=Sanna|first1=Lawrence J.|last2=Schwarz|first2=Norbert|last3=Stocker|first3=Shevaun L.| name-list-style = vanc |title=When debiasing backfires: Accessible content and accessibility experiences in debiasing hindsight.|journal=Journal of Experimental Psychology: Learning, Memory, and Cognition |volume=28|issue=3 |year=2002 |pages=497–502 |issn=0278-7393 |doi=10.1037/0278-7393.28.3.497 |pmid=12018501 |url=http://www.nifc.gov/PUBLICATIONS/acc_invest_march2010/speakers/4DebiasBackfires.pdf|citeseerx=10.1.1.387.5964}}</ref> The existence of this bias as a widespread phenomenon has been disputed in empirical studies.{{citation needed|date=December 2021}}\n")
-  (bias . "*[[Congruence bias]], the tendency to test hypotheses exclusively through direct testing, instead of testing possible alternative hypotheses.<ref name=\"iverson2008\" />\n")
-  (bias . "*[[Experimenter's bias|Experimenter's]] or [[expectation bias]], the tendency for experimenters to believe, certify, and publish data that agree with their expectations for the outcome of an experiment, and to disbelieve, discard, or downgrade the corresponding weightings for data that appear to conflict with those expectations.<ref>{{cite journal | vauthors = Jeng M |title=A selected history of expectation bias in physics |journal=American Journal of Physics |volume=74 |issue=7 |pages=578–583 |year=2006 |doi=10.1119/1.2186333|arxiv=physics/0508199 |bibcode=2006AmJPh..74..578J |s2cid=119491123 }}</ref>\n")
-  (bias . "*[[Observer-expectancy effect]], when a researcher expects a given result and therefore unconsciously manipulates an experiment or misinterprets data in order to find it (see also [[subject-expectancy effect]]).\n")
-  (bias . "*[[Selective perception]], the tendency for expectations to affect perception.\n")
-  (bias . "*[[Semmelweis reflex]], the tendency to reject new evidence that contradicts a paradigm.<ref name=\"edwards1968\" />\n")))
+  (bias
+   (name . "Backfire effect")
+   (description . "a tendency to react to disconfirming evidence by strengthening one's previous beliefs.<ref name=\"SannaSchwarz2002\">{{cite journal|last1=Sanna|first1=Lawrence J.|last2=Schwarz|first2=Norbert|last3=Stocker|first3=Shevaun L.| name-list-style = vanc |title=When debiasing backfires: Accessible content and accessibility experiences in debiasing hindsight.|journal=Journal of Experimental Psychology: Learning, Memory, and Cognition |volume=28|issue=3 |year=2002 |pages=497–502 |issn=0278-7393 |doi=10.1037/0278-7393.28.3.497 |pmid=12018501 |url=http://www.nifc.gov/PUBLICATIONS/acc_invest_march2010/speakers/4DebiasBackfires.pdf|citeseerx=10.1.1.387.5964}}</ref> The existence of this bias as a widespread phenomenon has been disputed in empirical studies.{{citation needed|date=December 2021}}\n"))
+  (bias
+   (name . "Congruence bias")
+   (description . "the tendency to test hypotheses exclusively through direct testing, instead of testing possible alternative hypotheses.<ref name=\"iverson2008\" />\n"))
+  (bias
+   (name . "Experimenter's bias|Experimenter's")
+   (description . "or [[expectation bias]], the tendency for experimenters to believe, certify, and publish data that agree with their expectations for the outcome of an experiment, and to disbelieve, discard, or downgrade the corresponding weightings for data that appear to conflict with those expectations.<ref>{{cite journal | vauthors = Jeng M |title=A selected history of expectation bias in physics |journal=American Journal of Physics |volume=74 |issue=7 |pages=578–583 |year=2006 |doi=10.1119/1.2186333|arxiv=physics/0508199 |bibcode=2006AmJPh..74..578J |s2cid=119491123 }}</ref>\n"))
+  (bias
+   (name . "Observer-expectancy effect")
+   (description . "when a researcher expects a given result and therefore unconsciously manipulates an experiment or misinterprets data in order to find it (see also [[subject-expectancy effect]]).\n"))
+  (bias
+   (name . "Selective perception")
+   (description . "the tendency for expectations to affect perception.\n"))
+  (bias
+   (name . "Semmelweis reflex")
+   (description . "the tendency to reject new evidence that contradicts a paradigm.<ref name=\"edwards1968\" />\n"))))
 (category
  (name . "Egocentric bias")
- (description . category-description)
+ (description . "'''Egocentric bias''' is the tendency to rely too heavily on one's own perspective and/or have a higher opinion of oneself than reality.<ref>{{cite book|last1=Schacter|first1=Daniel L.|last2=Gilbert|first2=Daniel T.|last3=Wegner|first3=Daniel M.|title=Psychology|date=2011|edition=2nd|publisher=Macmillan|isbn=978-1-4292-3719-2|page=254|url=https://books.google.com/books?id=emAyzTNy1cUC|language=en}}</ref> The following are forms of egocentric bias:\n")
  (biases
-  (bias . "*[[Bias blind spot]], the tendency to see oneself as less biased than other people, or to be able to identify more cognitive biases in others than in oneself.<ref name=\"blindspot\">{{cite journal|vauthors=Pronin E, Kugler MB|date=July 2007|title=Valuing thoughts, ignoring behavior: The introspection illusion as a source of the bias blind spot|journal=Journal of Experimental Social Psychology |volume=43|issue=4 |pages=565–578|doi=10.1016/j.jesp.2006.05.011|issn=0022-1031}}</ref>\n")
-  (bias . "*[[False consensus effect]], the tendency for people to overestimate the degree to which others agree with them.<ref>{{cite journal |doi=10.1037/0033-2909.102.1.72 |title=Ten years of research on the false-consensus effect: An empirical and theoretical review|last1=Marks |first1=Gary |last2=Miller|first2=Norman | name-list-style = vanc |journal=Psychological Bulletin|volume=102 |issue=1| year=1987 |pages=72–90}}</ref>\n")
-  (bias . "*[[False uniqueness bias]], the tendency of people to see their projects and themselves as more singular than they actually are.<ref>{{Cite web | url=http://psychology.iresearchnet.com/social-psychology/social-cognition/false-uniqueness-bias/ | title=False Uniqueness Bias (SOCIAL PSYCHOLOGY) – IResearchNet| date=2016-01-13}}</ref>\n")
-  (bias . "*[[Forer effect]] or [[Barnum effect]], the tendency for individuals to give high accuracy ratings to descriptions of their personality that supposedly are tailored specifically for them, but are in fact vague and general enough to apply to a wide range of people. This effect can provide a partial explanation for the widespread acceptance of some beliefs and practices, such as astrology, fortune telling, graphology, and some types of personality tests.<ref>{{Cite web|url=http://psych.fullerton.edu/mbirnbaum/psych101/barnum_demo.htm|title=The Barnum Demonstration|website=psych.fullerton.edu|access-date=2018-10-10}}</ref>\n")
-  (bias . "*[[Illusion of asymmetric insight]], where people perceive their knowledge of their peers to surpass their peers' knowledge of them.<ref>{{cite journal | vauthors = Pronin E, Kruger J, Savitsky K, Ross L | title = You don't know me, but I know you: the illusion of asymmetric insight | journal = Journal of Personality and Social Psychology | volume = 81 | issue = 4 | pages = 639–56 | date = October 2001 | pmid = 11642351 | doi = 10.1037/0022-3514.81.4.639 }}</ref>\n")
-  (bias . "*[[Illusion of control]], the tendency to overestimate one's degree of influence over other external events.<ref>{{cite journal |title=Illusions of Control: How We Overestimate Our Personal Influence |first=Suzanne C. |last=Thompson | name-list-style = vanc |journal=Current Directions in Psychological Science |volume=8 |issue= 6 |year=1999 |pages=187–190 |issn=0963-7214|jstor=20182602 |doi=10.1111/1467-8721.00044|s2cid=145714398 }}</ref>\n")
-  (bias . "*[[Illusion of transparency]], the tendency for people to overestimate the degree to which their personal mental state is known by others, and to overestimate how well they understand others' personal mental states.\n")
-  (bias . "*[[Illusion of validity]], the tendency to overestimate the accuracy of one's judgments, especially when available information is consistent or inter-correlated.<ref>{{cite book |last1=Dierkes |first1=Meinolf |last2=Antal |first2=Ariane Berthoin <!----may actually be editor---->|last3=Child |first3=John |author4=Ikujiro Nonaka | name-list-style = vanc |title=Handbook of Organizational Learning and Knowledge |date=2003 |publisher=Oxford University Press |isbn=978-0-19-829582-2 |page=22 |url={{Google books |plainurl=yes |id=JRd7RZzzw_wC |page=22 }} |access-date=9 September 2013}}</ref>\n")
-  (bias . "*[[Illusory superiority]], the tendency to overestimate one's desirable qualities, and underestimate undesirable qualities, relative to other people. (Also known as \"Lake Wobegon effect\", \"better-than-average effect\", or \"superiority bias\".)<ref name=\"hoorens\">{{cite journal |last=Hoorens |first=Vera | name-list-style = vanc|title=Self-enhancement and Superiority Biases in Social Comparison |journal=European Review of Social Psychology |volume=4 |issue=1 |pages=113–139 |doi=10.1080/14792779343000040 |year=1993}}</ref>\n")
-  (bias . "*[[Naïve cynicism]], expecting more egocentric bias in others than in oneself.\n")
-  (bias . "*[[Naïve realism (psychology)|Naïve realism]], the belief that we see reality as it really is – objectively and without bias; that the facts are plain for all to see; that rational people will agree with us; and that those who don't are either uninformed, lazy, irrational, or biased.\n")
-  (bias . "*[[Overconfidence effect]], a tendency to have excessive confidence in one's own answers to questions. For example, for certain types of questions, answers that people rate as \"99% certain\" turn out to be wrong 40% of the time.<ref name=\"HilbertPsychBul\" /><ref>{{cite journal | vauthors = Adams PA, Adams JK | title = Confidence in the recognition and reproduction of words difficult to spell | journal = The American Journal of Psychology | volume = 73 | issue = 4 | pages = 544–52 | date = December 1960 | pmid = 13681411 | doi = 10.2307/1419942 | jstor = 1419942 }}</ref><ref>{{cite book |chapter=Overconfidence |editor=Rüdiger Pohl |first=Ulrich |last=Hoffrage |name-list-style=vanc |title=Cognitive Illusions: a handbook on fallacies and biases in thinking, judgement and memory |publisher=Psychology Press |year=2004 |isbn=978-1-84169-351-4 |chapter-url=https://archive.org/details/cognitiveillusio0000unse |url-access=registration |url=https://archive.org/details/cognitiveillusio0000unse }}</ref><ref>{{harvnb|Sutherland|2007 |pp=172–178}}</ref>\n")
-  (bias . "*[[Planning fallacy]], the tendency for people to underestimate the time it will take them to complete a given task.<ref name=\"temporal\" />\n")
-  (bias . "*[[Restraint bias]], the tendency to overestimate one's ability to show restraint in the face of temptation.\n")
-  (bias . "*[[Trait ascription bias]], the tendency for people to view themselves as relatively variable in terms of personality, behavior, and mood while viewing others as much more predictable.\n")
-  (bias . "*[[Third-person effect]], a tendency to believe that mass-communicated media messages have a greater effect on others than on themselves.\n")))
+  (bias
+   (name . "Bias blind spot")
+   (description . "the tendency to see oneself as less biased than other people, or to be able to identify more cognitive biases in others than in oneself.<ref name=\"blindspot\">{{cite journal|vauthors=Pronin E, Kugler MB|date=July 2007|title=Valuing thoughts, ignoring behavior: The introspection illusion as a source of the bias blind spot|journal=Journal of Experimental Social Psychology |volume=43|issue=4 |pages=565–578|doi=10.1016/j.jesp.2006.05.011|issn=0022-1031}}</ref>\n"))
+  (bias
+   (name . "False consensus effect")
+   (description . "the tendency for people to overestimate the degree to which others agree with them.<ref>{{cite journal |doi=10.1037/0033-2909.102.1.72 |title=Ten years of research on the false-consensus effect: An empirical and theoretical review|last1=Marks |first1=Gary |last2=Miller|first2=Norman | name-list-style = vanc |journal=Psychological Bulletin|volume=102 |issue=1| year=1987 |pages=72–90}}</ref>\n"))
+  (bias
+   (name . "False uniqueness bias")
+   (description . "the tendency of people to see their projects and themselves as more singular than they actually are.<ref>{{Cite web | url=http://psychology.iresearchnet.com/social-psychology/social-cognition/false-uniqueness-bias/ | title=False Uniqueness Bias (SOCIAL PSYCHOLOGY) – IResearchNet| date=2016-01-13}}</ref>\n"))
+  (bias
+   (name . "Forer effect")
+   (description . "or [[Barnum effect]], the tendency for individuals to give high accuracy ratings to descriptions of their personality that supposedly are tailored specifically for them, but are in fact vague and general enough to apply to a wide range of people. This effect can provide a partial explanation for the widespread acceptance of some beliefs and practices, such as astrology, fortune telling, graphology, and some types of personality tests.<ref>{{Cite web|url=http://psych.fullerton.edu/mbirnbaum/psych101/barnum_demo.htm|title=The Barnum Demonstration|website=psych.fullerton.edu|access-date=2018-10-10}}</ref>\n"))
+  (bias
+   (name . "Illusion of asymmetric insight")
+   (description . "where people perceive their knowledge of their peers to surpass their peers' knowledge of them.<ref>{{cite journal | vauthors = Pronin E, Kruger J, Savitsky K, Ross L | title = You don't know me, but I know you: the illusion of asymmetric insight | journal = Journal of Personality and Social Psychology | volume = 81 | issue = 4 | pages = 639–56 | date = October 2001 | pmid = 11642351 | doi = 10.1037/0022-3514.81.4.639 }}</ref>\n"))
+  (bias
+   (name . "Illusion of control")
+   (description . "the tendency to overestimate one's degree of influence over other external events.<ref>{{cite journal |title=Illusions of Control: How We Overestimate Our Personal Influence |first=Suzanne C. |last=Thompson | name-list-style = vanc |journal=Current Directions in Psychological Science |volume=8 |issue= 6 |year=1999 |pages=187–190 |issn=0963-7214|jstor=20182602 |doi=10.1111/1467-8721.00044|s2cid=145714398 }}</ref>\n"))
+  (bias
+   (name . "Illusion of transparency")
+   (description . "the tendency for people to overestimate the degree to which their personal mental state is known by others, and to overestimate how well they understand others' personal mental states.\n"))
+  (bias
+   (name . "Illusion of validity")
+   (description . "the tendency to overestimate the accuracy of one's judgments, especially when available information is consistent or inter-correlated.<ref>{{cite book |last1=Dierkes |first1=Meinolf |last2=Antal |first2=Ariane Berthoin <!----may actually be editor---->|last3=Child |first3=John |author4=Ikujiro Nonaka | name-list-style = vanc |title=Handbook of Organizational Learning and Knowledge |date=2003 |publisher=Oxford University Press |isbn=978-0-19-829582-2 |page=22 |url={{Google books |plainurl=yes |id=JRd7RZzzw_wC |page=22 }} |access-date=9 September 2013}}</ref>\n"))
+  (bias
+   (name . "Illusory superiority")
+   (description . "the tendency to overestimate one's desirable qualities, and underestimate undesirable qualities, relative to other people. (Also known as \"Lake Wobegon effect\", \"better-than-average effect\", or \"superiority bias\".)<ref name=\"hoorens\">{{cite journal |last=Hoorens |first=Vera | name-list-style = vanc|title=Self-enhancement and Superiority Biases in Social Comparison |journal=European Review of Social Psychology |volume=4 |issue=1 |pages=113–139 |doi=10.1080/14792779343000040 |year=1993}}</ref>\n"))
+  (bias
+   (name . "Naïve cynicism")
+   (description . "expecting more egocentric bias in others than in oneself.\n"))
+  (bias
+   (name . "Naïve realism (psychology)|Naïve realism")
+   (description . "the belief that we see reality as it really is – objectively and without bias; that the facts are plain for all to see; that rational people will agree with us; and that those who don't are either uninformed, lazy, irrational, or biased.\n"))
+  (bias
+   (name . "Overconfidence effect")
+   (description . "a tendency to have excessive confidence in one's own answers to questions. For example, for certain types of questions, answers that people rate as \"99% certain\" turn out to be wrong 40% of the time.<ref name=\"HilbertPsychBul\" /><ref>{{cite journal | vauthors = Adams PA, Adams JK | title = Confidence in the recognition and reproduction of words difficult to spell | journal = The American Journal of Psychology | volume = 73 | issue = 4 | pages = 544–52 | date = December 1960 | pmid = 13681411 | doi = 10.2307/1419942 | jstor = 1419942 }}</ref><ref>{{cite book |chapter=Overconfidence |editor=Rüdiger Pohl |first=Ulrich |last=Hoffrage |name-list-style=vanc |title=Cognitive Illusions: a handbook on fallacies and biases in thinking, judgement and memory |publisher=Psychology Press |year=2004 |isbn=978-1-84169-351-4 |chapter-url=https://archive.org/details/cognitiveillusio0000unse |url-access=registration |url=https://archive.org/details/cognitiveillusio0000unse }}</ref><ref>{{harvnb|Sutherland|2007 |pp=172–178}}</ref>\n"))
+  (bias
+   (name . "Planning fallacy")
+   (description . "the tendency for people to underestimate the time it will take them to complete a given task.<ref name=\"temporal\" />\n"))
+  (bias
+   (name . "Restraint bias")
+   (description . "the tendency to overestimate one's ability to show restraint in the face of temptation.\n"))
+  (bias
+   (name . "Trait ascription bias")
+   (description . "the tendency for people to view themselves as relatively variable in terms of personality, behavior, and mood while viewing others as much more predictable.\n"))
+  (bias
+   (name . "Third-person effect")
+   (description . "a tendency to believe that mass-communicated media messages have a greater effect on others than on themselves.\n"))))
 (category
  (name . "Extension neglect")
- (description . category-description)
+ (description . "The following are forms of extension neglect:\n")
  (biases
-  (bias . "*[[Base rate fallacy]] or base rate neglect, the tendency to ignore general information and focus on information only pertaining to the specific case, even when the general information is more important.<ref>{{harvnb |Baron|1994|pp=224–228}}</ref>\n")
-  (bias . "*[[Compassion fade]], the tendency to behave more compassionately towards a small number of identifiable victims than to a large number of anonymous ones.<ref name=\"comp-fade\">{{cite journal | vauthors = Västfjäll D, Slovic P, Mayorga M, Peters E | title = Compassion fade: affect and charity are greatest for a single child in need | journal = PLOS ONE | volume = 9 | issue = 6 | pages = e100115 | date = 18 June 2014 | pmid = 24940738 | pmc = 4062481 | doi = 10.1371/journal.pone.0100115 | bibcode = 2014PLoSO...9j0115V | doi-access = free }}</ref>\n")
-  (bias . "*[[Conjunction fallacy]], the tendency to assume that specific conditions are more probable than a more general version of those same conditions.<ref>{{cite book |last=Fisk |first=John E. |name-list-style=vanc |title=Cognitive Illusions: A Handbook on Fallacies and Biases in Thinking, Judgement and Memory |editor-first=Rüdiger F. |editor-last=Pohl |publisher=Psychology Press |location=Hove, UK |year=2004 |chapter=Conjunction fallacy |isbn=978-1-84169-351-4 |oclc=55124398 |pages=[https://archive.org/details/cognitiveillusio0000unse/page/23 23–42] |chapter-url=https://archive.org/details/cognitiveillusio0000unse/page/23 }}</ref>\n")
-  (bias . "*[[Duration neglect]], the neglect of the duration of an episode in determining its value.<ref>Barbara L. Fredrickson and Daniel Kahneman (1993). [http://pages.ucsd.edu/~nchristenfeld/Happiness_Readings_files/Class%209%20-%20Fredrickson%201993.pdf Duration Neglect in Retrospective Evaluations of Affective Episodes]. Journal of Personality and Social Psychology. 65 (1) pgs 45-55. {{Webarchive|url=https://web.archive.org/web/20170808092231/http://pages.ucsd.edu/~nchristenfeld/Happiness_Readings_files/Class%209%20-%20Fredrickson%201993.pdf|date=2017-08-08}}</ref>\n")
-  (bias . "*[[Hyperbolic discounting]], where discounting is the tendency for people to have a stronger preference for more immediate payoffs relative to later payoffs. Hyperbolic discounting leads to choices that are inconsistent over time – people make choices today that their future selves would prefer not to have made, despite using the same reasoning.<ref name=\"Laibson1997QJE\">{{cite journal |author-link=David Laibson |last=Laibson |first=David | name-list-style = vanc|year=1997 |title=Golden Eggs and Hyperbolic Discounting |journal=[[Quarterly Journal of Economics]] |volume=112 |issue=2 |pages=443–477 |doi=10.1162/003355397555253|citeseerx=10.1.1.337.3544 }}</ref> Also known as current moment bias or present bias, and related to [[Dynamic inconsistency]]. A good example of this is a study showed that when making food choices for the coming week, 74% of participants chose fruit, whereas when the food choice was for the current day, 70% chose chocolate.\n")
-  (bias . "*[[Insensitivity to sample size]], the tendency to under-expect variation in small samples.\n")
-  (bias . "*[[Less-is-better effect]], the tendency to prefer a smaller set to a larger set judged separately, but not jointly.\n")
-  (bias . "*[[Neglect of probability]], the tendency to completely disregard probability when making a decision under uncertainty.<ref>{{harvnb|Baron|1994|p=353}}</ref>\n")
-  (bias . "*[[Scope neglect]] or scope insensitivity, the tendency to be insensitive to the size of a problem when evaluating it. For example, being willing to pay as much to save 2,000 children or 20,000 children\n")
-  (bias . "*[[Zero-risk bias]], the preference for reducing a small risk to zero over a greater reduction in a larger risk.\n")))
+  (bias
+   (name . "Base rate fallacy")
+   (description . "or base rate neglect, the tendency to ignore general information and focus on information only pertaining to the specific case, even when the general information is more important.<ref>{{harvnb |Baron|1994|pp=224–228}}</ref>\n"))
+  (bias
+   (name . "Compassion fade")
+   (description . "the tendency to behave more compassionately towards a small number of identifiable victims than to a large number of anonymous ones.<ref name=\"comp-fade\">{{cite journal | vauthors = Västfjäll D, Slovic P, Mayorga M, Peters E | title = Compassion fade: affect and charity are greatest for a single child in need | journal = PLOS ONE | volume = 9 | issue = 6 | pages = e100115 | date = 18 June 2014 | pmid = 24940738 | pmc = 4062481 | doi = 10.1371/journal.pone.0100115 | bibcode = 2014PLoSO...9j0115V | doi-access = free }}</ref>\n"))
+  (bias
+   (name . "Conjunction fallacy")
+   (description . "the tendency to assume that specific conditions are more probable than a more general version of those same conditions.<ref>{{cite book |last=Fisk |first=John E. |name-list-style=vanc |title=Cognitive Illusions: A Handbook on Fallacies and Biases in Thinking, Judgement and Memory |editor-first=Rüdiger F. |editor-last=Pohl |publisher=Psychology Press |location=Hove, UK |year=2004 |chapter=Conjunction fallacy |isbn=978-1-84169-351-4 |oclc=55124398 |pages=[https://archive.org/details/cognitiveillusio0000unse/page/23 23–42] |chapter-url=https://archive.org/details/cognitiveillusio0000unse/page/23 }}</ref>\n"))
+  (bias
+   (name . "Duration neglect")
+   (description . "the neglect of the duration of an episode in determining its value.<ref>Barbara L. Fredrickson and Daniel Kahneman (1993). [http://pages.ucsd.edu/~nchristenfeld/Happiness_Readings_files/Class%209%20-%20Fredrickson%201993.pdf Duration Neglect in Retrospective Evaluations of Affective Episodes]. Journal of Personality and Social Psychology. 65 (1) pgs 45-55. {{Webarchive|url=https://web.archive.org/web/20170808092231/http://pages.ucsd.edu/~nchristenfeld/Happiness_Readings_files/Class%209%20-%20Fredrickson%201993.pdf|date=2017-08-08}}</ref>\n"))
+  (bias
+   (name . "Hyperbolic discounting")
+   (description . "where discounting is the tendency for people to have a stronger preference for more immediate payoffs relative to later payoffs. Hyperbolic discounting leads to choices that are inconsistent over time – people make choices today that their future selves would prefer not to have made, despite using the same reasoning.<ref name=\"Laibson1997QJE\">{{cite journal |author-link=David Laibson |last=Laibson |first=David | name-list-style = vanc|year=1997 |title=Golden Eggs and Hyperbolic Discounting |journal=[[Quarterly Journal of Economics]] |volume=112 |issue=2 |pages=443–477 |doi=10.1162/003355397555253|citeseerx=10.1.1.337.3544 }}</ref> Also known as current moment bias or present bias, and related to [[Dynamic inconsistency]]. A good example of this is a study showed that when making food choices for the coming week, 74% of participants chose fruit, whereas when the food choice was for the current day, 70% chose chocolate.\n"))
+  (bias
+   (name . "Insensitivity to sample size")
+   (description . "the tendency to under-expect variation in small samples.\n"))
+  (bias
+   (name . "Less-is-better effect")
+   (description . "the tendency to prefer a smaller set to a larger set judged separately, but not jointly.\n"))
+  (bias
+   (name . "Neglect of probability")
+   (description . "the tendency to completely disregard probability when making a decision under uncertainty.<ref>{{harvnb|Baron|1994|p=353}}</ref>\n"))
+  (bias
+   (name . "Scope neglect")
+   (description . "or scope insensitivity, the tendency to be insensitive to the size of a problem when evaluating it. For example, being willing to pay as much to save 2,000 children or 20,000 children\n"))
+  (bias
+   (name . "Zero-risk bias")
+   (description . "the preference for reducing a small risk to zero over a greater reduction in a larger risk.\n"))))
 (category
  (name . "False priors")
- (description . category-description)
+ (description . "Biases based on false priors include:\n")
  (biases
-  (bias . "*[[Agent detection]], the inclination to presume the purposeful intervention of a sentient or intelligent [[Agency (philosophy)|agent]].\n")
-  (bias . "*[[Automation bias]], the tendency to depend excessively on automated systems which can lead to erroneous automated information overriding correct decisions.<ref>{{cite book|last1=Goddard|first1=Kate|title=International Perspectives in Health Informatics|last2=Roudsari|first2=Abdul|last3=Wyatt|first3=Jeremy C|date=2011|publisher=IOS Press.|series=Studies in Health Technology and Informatics|volume=164|pages=17–22|chapter=Automation Bias – A Hidden Issue for Clinical Decision Support System Use|doi=10.3233/978-1-60750-709-3-17|author-link=Katrina A. B. Goddard|chapter-url={{Google books |plainurl=yes |id=NsbaN_fXRe4C |page=17}}|name-list-style=vanc|issue=International Perspectives in Health Informatics}}</ref>\n")
-  (bias . "*[[Gender bias]], a widespread<ref>{{Cite report|title=Tackling social norms: a game changer for gender inequalities|url=http://hdr.undp.org/en/GSNI|series=2020 Human Development Perspectives|access-date=2020-06-10|publisher=United Nations Development Programme|type=Gender Social Norms Index}}</ref> set of implicit biases that discriminate against a gender. For example, the assumption that women are less suited to jobs requiring high intellectual ability.<ref>{{Cite journal|last1=Bian|first1=Lin|last2=Leslie|first2=Sarah-Jane|last3=Cimpian|first3=Andrei|date=November 2018|title=Evidence of bias against girls and women in contexts that emphasize intellectual ability.|journal=American Psychologist |language=en |volume=73|issue=9|pages=1139–1153 |doi=10.1037/amp0000427 |pmid=30525794 |issn=1935-990X |doi-access=free}}</ref>{{Failed verification|date=February 2022}} Or the assumption that people or animals are male in the absence of any indicators of gender.<ref>{{Cite journal|last=Hamilton|first=Mykol C.|date=1991|title=Masculine Bias in the Attribution of Personhood: People = Male, Male = People|journal=Psychology of Women Quarterly|language=en-US|volume=15|issue=3|pages=393–402|doi=10.1111/j.1471-6402.1991.tb00415.x|s2cid=143533483|issn=0361-6843}}</ref>\n")
-  (bias . "*[[Sexual overperception bias]], the tendency to overestimate sexual interest of another person in oneself, and [[Sexual underperception bias]], the tendency to underestimate it.\n")
-  (bias . "*[[Stereotyping]], expecting a member of a group to have certain characteristics without having actual information about that individual.\n")))
+  (bias
+   (name . "Agent detection")
+   (description . "the inclination to presume the purposeful intervention of a sentient or intelligent [[Agency (philosophy)|agent]].\n"))
+  (bias
+   (name . "Automation bias")
+   (description . "the tendency to depend excessively on automated systems which can lead to erroneous automated information overriding correct decisions.<ref>{{cite book|last1=Goddard|first1=Kate|title=International Perspectives in Health Informatics|last2=Roudsari|first2=Abdul|last3=Wyatt|first3=Jeremy C|date=2011|publisher=IOS Press.|series=Studies in Health Technology and Informatics|volume=164|pages=17–22|chapter=Automation Bias – A Hidden Issue for Clinical Decision Support System Use|doi=10.3233/978-1-60750-709-3-17|author-link=Katrina A. B. Goddard|chapter-url={{Google books |plainurl=yes |id=NsbaN_fXRe4C |page=17}}|name-list-style=vanc|issue=International Perspectives in Health Informatics}}</ref>\n"))
+  (bias
+   (name . "Gender bias")
+   (description . "a widespread<ref>{{Cite report|title=Tackling social norms: a game changer for gender inequalities|url=http://hdr.undp.org/en/GSNI|series=2020 Human Development Perspectives|access-date=2020-06-10|publisher=United Nations Development Programme|type=Gender Social Norms Index}}</ref> set of implicit biases that discriminate against a gender. For example, the assumption that women are less suited to jobs requiring high intellectual ability.<ref>{{Cite journal|last1=Bian|first1=Lin|last2=Leslie|first2=Sarah-Jane|last3=Cimpian|first3=Andrei|date=November 2018|title=Evidence of bias against girls and women in contexts that emphasize intellectual ability.|journal=American Psychologist |language=en |volume=73|issue=9|pages=1139–1153 |doi=10.1037/amp0000427 |pmid=30525794 |issn=1935-990X |doi-access=free}}</ref>{{Failed verification|date=February 2022}} Or the assumption that people or animals are male in the absence of any indicators of gender.<ref>{{Cite journal|last=Hamilton|first=Mykol C.|date=1991|title=Masculine Bias in the Attribution of Personhood: People = Male, Male = People|journal=Psychology of Women Quarterly|language=en-US|volume=15|issue=3|pages=393–402|doi=10.1111/j.1471-6402.1991.tb00415.x|s2cid=143533483|issn=0361-6843}}</ref>\n"))
+  (bias
+   (name . "Sexual overperception bias")
+   (description . "the tendency to overestimate sexual interest of another person in oneself, and [[Sexual underperception bias]], the tendency to underestimate it.\n"))
+  (bias
+   (name . "Stereotyping")
+   (description . "expecting a member of a group to have certain characteristics without having actual information about that individual.\n"))))
 (category
  (name . "Framing effect")
- (description . category-description)
+ (description . "The framing effect is the tendency to draw different conclusions from the same information, depending on how that information is presented. Forms of the framing effect include:\n")
  (biases
-  (bias . "*[[Contrast effect]], the enhancement or reduction of a certain stimulus's perception when compared with a recently observed, contrasting object.<ref>{{harvnb|Plous|1993|pp=38–41}}</ref>\n")
-  (bias . "*[[Decoy effect]], where preferences for either option A or B change in favor of option B when option C is presented, which is completely dominated by option B (inferior in all respects) and partially dominated by option A.<ref>{{Cite web|url=https://www.futurelearn.com/courses/complexity-and-uncertainty/0/steps/1882|title=Evolution and cognitive biases: the decoy effect |website=FutureLearn|language=en-GB|access-date=2018-10-10}}</ref>\n")
-  (bias . "*[[Default effect]], the tendency to favor the default option when given a choice between several options.<ref>{{Cite news|url=https://www.influenceatwork.com/inside-influence-report/how-to-use-and-improve-actions-through-enhanced-defaults/|title=The Default Effect: How to Leverage Bias and Influence Behavior |date=2012-01-11|publisher=Influence at Work|access-date=2018-10-10|language=en-US}}</ref>\n")
-  (bias . "*[[Denomination effect]], the tendency to spend more money when it is denominated in small amounts (e.g., coins) rather than large amounts (e.g., bills).<ref>[https://www.npr.org/templates/story/story.php?storyId=104063298 Why We Spend Coins Faster Than Bills] by Chana Joffe-Walt. ''All Things Considered'', 12 May 2009.</ref>\n")
-  (bias . "*[[Distinction bias]], the tendency to view two options as more dissimilar when evaluating them simultaneously than when evaluating them separately.<ref>{{cite journal | vauthors = Hsee CK, Zhang J | title = Distinction bias: misprediction and mischoice due to joint evaluation | journal = Journal of Personality and Social Psychology | volume = 86 | issue = 5 | pages = 680–95 | date = May 2004 | pmid = 15161394 | doi = 10.1037/0022-3514.86.5.680 | citeseerx = 10.1.1.484.9171 }}</ref>\n")))
+  (bias
+   (name . "Contrast effect")
+   (description . "the enhancement or reduction of a certain stimulus's perception when compared with a recently observed, contrasting object.<ref>{{harvnb|Plous|1993|pp=38–41}}</ref>\n"))
+  (bias
+   (name . "Decoy effect")
+   (description . "where preferences for either option A or B change in favor of option B when option C is presented, which is completely dominated by option B (inferior in all respects) and partially dominated by option A.<ref>{{Cite web|url=https://www.futurelearn.com/courses/complexity-and-uncertainty/0/steps/1882|title=Evolution and cognitive biases: the decoy effect |website=FutureLearn|language=en-GB|access-date=2018-10-10}}</ref>\n"))
+  (bias
+   (name . "Default effect")
+   (description . "the tendency to favor the default option when given a choice between several options.<ref>{{Cite news|url=https://www.influenceatwork.com/inside-influence-report/how-to-use-and-improve-actions-through-enhanced-defaults/|title=The Default Effect: How to Leverage Bias and Influence Behavior |date=2012-01-11|publisher=Influence at Work|access-date=2018-10-10|language=en-US}}</ref>\n"))
+  (bias
+   (name . "Denomination effect")
+   (description . "the tendency to spend more money when it is denominated in small amounts (e.g., coins) rather than large amounts (e.g., bills).<ref>[https://www.npr.org/templates/story/story.php?storyId=104063298 Why We Spend Coins Faster Than Bills] by Chana Joffe-Walt. ''All Things Considered'', 12 May 2009.</ref>\n"))
+  (bias
+   (name . "Distinction bias")
+   (description . "the tendency to view two options as more dissimilar when evaluating them simultaneously than when evaluating them separately.<ref>{{cite journal | vauthors = Hsee CK, Zhang J | title = Distinction bias: misprediction and mischoice due to joint evaluation | journal = Journal of Personality and Social Psychology | volume = 86 | issue = 5 | pages = 680–95 | date = May 2004 | pmid = 15161394 | doi = 10.1037/0022-3514.86.5.680 | citeseerx = 10.1.1.484.9171 }}</ref>\n"))))
 (category
  (name . "Logical fallacy")
- (description . category-description)
+ (description . "Logical fallacy biases include:\n")
  (biases
-  (bias . "*[[Berkson's paradox]], the tendency to misinterpret statistical experiments involving conditional probabilities.<ref>{{Cite web|url=https://brilliant.org/wiki/berksons-paradox/|title=Berkson's Paradox {{!}} Brilliant Math & Science Wiki|website=brilliant.org|language=en-us|access-date=2018-10-10}}</ref>\n")
-  (bias . "*[[Escalation of commitment]], irrational escalation, or [[sunk cost fallacy]], where people justify increased investment in a decision, based on the cumulative prior investment, despite new evidence suggesting that the decision was probably wrong.\n")
-  (bias . "*[[Gambler's fallacy]], the tendency to think that future probabilities are altered by past events, when in reality they are unchanged. The fallacy arises from an erroneous conceptualization of the [[law of large numbers]]. For example, \"I've flipped heads with this coin five times consecutively, so the chance of tails coming out on the sixth flip is much greater than heads.\"<ref>{{Cite news|url=https://www.investopedia.com/terms/g/gamblersfallacy.asp|title=Gambler's Fallacy/Monte Carlo Fallacy | author = Investopedia Staff |date=2006-10-29|work=Investopedia|access-date=2018-10-10|language=en-US}}</ref>\n")
-  (bias . "*[[Hot-hand fallacy]] (also known as \"hot hand phenomenon\" or \"hot hand\"), the belief that a person who has experienced success with a random event has a greater chance of further success in additional attempts.\n")
-  (bias . "*[[Illicit transference]], occurs when a term in the distributive (referring to every member of a class) and collective (referring to the class itself as a whole) sense are treated as equivalent. The variants of this fallacy are the [[fallacy of composition]] and the [[fallacy of division]].\n")
-  (bias . "*[[Plan continuation bias]], failure to recognize that the original plan of action is no longer appropriate for a changing situation or for a situation that is different than anticipated.<ref>{{Cite journal|last=Tuccio|first=William|date=2011-01-01|title=Heuristics to Improve Human Factors Performance in Aviation|journal=Journal of Aviation/Aerospace Education & Research|volume=20|issue=3|doi=10.15394/jaaer.2011.1640|issn=2329-258X|doi-access=free}}</ref>\n")
-  (bias . "*[[Subadditivity effect]], the tendency to judge the probability of the whole to be less than the probabilities of the parts.<ref>Baron, J. (in preparation). ''Thinking and Deciding'', 4th edition. New York: Cambridge University Press.</ref>\n")
-  (bias . "*[[Time-saving bias]], a tendency to underestimate the time that could be saved (or lost) when increasing (or decreasing) from a relatively low speed, and to overestimate the time that could be saved (or lost) when increasing (or decreasing) from a relatively high speed.\n")
-  (bias . "*[[Zero-sum thinking|Zero-sum bias]], where a situation is incorrectly perceived to be like a zero-sum game (i.e., one person gains at the expense of another).\n")))
+  (bias
+   (name . "Berkson's paradox")
+   (description . "the tendency to misinterpret statistical experiments involving conditional probabilities.<ref>{{Cite web|url=https://brilliant.org/wiki/berksons-paradox/|title=Berkson's Paradox {{!}} Brilliant Math & Science Wiki|website=brilliant.org|language=en-us|access-date=2018-10-10}}</ref>\n"))
+  (bias
+   (name . "Escalation of commitment")
+   (description . "irrational escalation, or [[sunk cost fallacy]], where people justify increased investment in a decision, based on the cumulative prior investment, despite new evidence suggesting that the decision was probably wrong.\n"))
+  (bias
+   (name . "Gambler's fallacy")
+   (description . "the tendency to think that future probabilities are altered by past events, when in reality they are unchanged. The fallacy arises from an erroneous conceptualization of the [[law of large numbers]]. For example, \"I've flipped heads with this coin five times consecutively, so the chance of tails coming out on the sixth flip is much greater than heads.\"<ref>{{Cite news|url=https://www.investopedia.com/terms/g/gamblersfallacy.asp|title=Gambler's Fallacy/Monte Carlo Fallacy | author = Investopedia Staff |date=2006-10-29|work=Investopedia|access-date=2018-10-10|language=en-US}}</ref>\n"))
+  (bias
+   (name . "Hot-hand fallacy")
+   (description . "(also known as \"hot hand phenomenon\" or \"hot hand\"), the belief that a person who has experienced success with a random event has a greater chance of further success in additional attempts.\n"))
+  (bias
+   (name . "Illicit transference")
+   (description . "occurs when a term in the distributive (referring to every member of a class) and collective (referring to the class itself as a whole) sense are treated as equivalent. The variants of this fallacy are the [[fallacy of composition]] and the [[fallacy of division]].\n"))
+  (bias
+   (name . "Plan continuation bias")
+   (description . "failure to recognize that the original plan of action is no longer appropriate for a changing situation or for a situation that is different than anticipated.<ref>{{Cite journal|last=Tuccio|first=William|date=2011-01-01|title=Heuristics to Improve Human Factors Performance in Aviation|journal=Journal of Aviation/Aerospace Education & Research|volume=20|issue=3|doi=10.15394/jaaer.2011.1640|issn=2329-258X|doi-access=free}}</ref>\n"))
+  (bias
+   (name . "Subadditivity effect")
+   (description . "the tendency to judge the probability of the whole to be less than the probabilities of the parts.<ref>Baron, J. (in preparation). ''Thinking and Deciding'', 4th edition. New York: Cambridge University Press.</ref>\n"))
+  (bias
+   (name . "Time-saving bias")
+   (description . "a tendency to underestimate the time that could be saved (or lost) when increasing (or decreasing) from a relatively low speed, and to overestimate the time that could be saved (or lost) when increasing (or decreasing) from a relatively high speed.\n"))
+  (bias
+   (name . "Zero-sum thinking|Zero-sum bias")
+   (description . "where a situation is incorrectly perceived to be like a zero-sum game (i.e., one person gains at the expense of another).\n"))))
 (category
  (name . "Prospect theory")
- (description . category-description)
+ (description . "The following relate to prospect theory:\n")
  (biases
-  (bias . "*[[Ambiguity effect]], the tendency to avoid options for which the probability of a favorable outcome is unknown.<ref>{{harvnb|Baron|1994|p=372}}</ref>\n")
-  (bias . "*[[Disposition effect]], the tendency to sell an asset that has accumulated in value and resist selling an asset that has declined in value.\n")
-  (bias . "*[[Dread aversion]], just as losses yield double the emotional impact of gains, dread yields double the emotional impact of savouring.<ref>{{Cite ssrn|title=Wishful Thinking, Prudent Behavior: The Evolutionary Origin of Optimism, Loss Aversion and Disappointment Aversion|first1=David|last1=de Meza|first2=Chris|last2=Dawson | name-list-style = vanc|date=January 24, 2018|ssrn = 3108432}}</ref>[https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3822640]\n")
-  (bias . "*[[Endowment effect]], the tendency for people to demand much more to give up an object than they would be willing to pay to acquire it.<ref>{{Harv|Kahneman|Knetsch|Thaler|1991|p=193}} Richard Thaler coined the term \"endowment effect.\"</ref>\n")
-  (bias . "*[[Loss aversion]], where the perceived disutility of giving up an object is greater than the utility associated with acquiring it.<ref>{{Harv|Kahneman|Knetsch|Thaler|1991|p=193}} Daniel Kahneman, together with Amos Tversky, coined the term \"loss aversion.\"</ref> (see also [[Sunk cost fallacy]])\n")
-  (bias . "*[[Pseudocertainty effect]], the tendency to make risk-averse choices if the expected outcome is positive, but make risk-seeking choices to avoid negative outcomes.<ref>{{Harvnb |Hardman|2009|p=137}}</ref>\n")
-  (bias . "*[[Status quo bias]], the tendency to prefer things to stay relatively the same.<ref>{{harvnb|Kahneman|Knetsch|Thaler|1991|p=193}}</ref><ref>{{harvnb|Baron|1994|p=382}}</ref>\n")
-  (bias . "*[[System justification]], the tendency to defend and bolster the status quo. Existing social, economic, and political arrangements tend to be preferred, and alternatives disparaged, sometimes even at the expense of individual and collective self-interest.\n")))
+  (bias
+   (name . "Ambiguity effect")
+   (description . "the tendency to avoid options for which the probability of a favorable outcome is unknown.<ref>{{harvnb|Baron|1994|p=372}}</ref>\n"))
+  (bias
+   (name . "Disposition effect")
+   (description . "the tendency to sell an asset that has accumulated in value and resist selling an asset that has declined in value.\n"))
+  (bias
+   (name . "Dread aversion")
+   (description . "just as losses yield double the emotional impact of gains, dread yields double the emotional impact of savouring.<ref>{{Cite ssrn|title=Wishful Thinking, Prudent Behavior: The Evolutionary Origin of Optimism, Loss Aversion and Disappointment Aversion|first1=David|last1=de Meza|first2=Chris|last2=Dawson | name-list-style = vanc|date=January 24, 2018|ssrn = 3108432}}</ref>[https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3822640]\n"))
+  (bias
+   (name . "Endowment effect")
+   (description . "the tendency for people to demand much more to give up an object than they would be willing to pay to acquire it.<ref>{{Harv|Kahneman|Knetsch|Thaler|1991|p=193}} Richard Thaler coined the term \"endowment effect.\"</ref>\n"))
+  (bias
+   (name . "Loss aversion")
+   (description . "where the perceived disutility of giving up an object is greater than the utility associated with acquiring it.<ref>{{Harv|Kahneman|Knetsch|Thaler|1991|p=193}} Daniel Kahneman, together with Amos Tversky, coined the term \"loss aversion.\"</ref> (see also [[Sunk cost fallacy]])\n"))
+  (bias
+   (name . "Pseudocertainty effect")
+   (description . "the tendency to make risk-averse choices if the expected outcome is positive, but make risk-seeking choices to avoid negative outcomes.<ref>{{Harvnb |Hardman|2009|p=137}}</ref>\n"))
+  (bias
+   (name . "Status quo bias")
+   (description . "the tendency to prefer things to stay relatively the same.<ref>{{harvnb|Kahneman|Knetsch|Thaler|1991|p=193}}</ref><ref>{{harvnb|Baron|1994|p=382}}</ref>\n"))
+  (bias
+   (name . "System justification")
+   (description . "the tendency to defend and bolster the status quo. Existing social, economic, and political arrangements tend to be preferred, and alternatives disparaged, sometimes even at the expense of individual and collective self-interest.\n"))))
 (category
  (name . "Self-assessment")
- (description . category-description)
+ (description . "Association fallacies include:\n")
  (biases
-  (bias . "*[[Dunning–Kruger effect]], the tendency for unskilled individuals to overestimate their own ability and the tendency for experts to underestimate their own ability.<ref>{{cite journal | vauthors = Kruger J, Dunning D | title = Unskilled and unaware of it: how difficulties in recognizing one's own incompetence lead to inflated self-assessments | journal = Journal of Personality and Social Psychology | volume = 77 | issue = 6 | pages = 1121–34 | date = December 1999 | pmid = 10626367 | doi = 10.1037/0022-3514.77.6.1121 | citeseerx = 10.1.1.64.2655 }}</ref>\n")
-  (bias . "*[[Hot-cold empathy gap]], the tendency to underestimate the influence of [[visceral drive]]s on one's attitudes, preferences, and behaviors.<ref>{{cite book|doi=10.1016/B978-0-12-407188-9.00003-X|chapter=Changing Places: A Dual Judgment Model of Empathy Gaps in Emotional Perspective Taking|volume=48|title=Advances in Experimental Social Psychology|year=2013|last1= Van Boven|first1=Leaf|last2=Loewenstein|first2=George|last3=Dunning|first3=David|last4=Nordgren|first4=Loran F.|isbn=9780124071889|pages=117–171|editor1-last=Zanna|editor1-first=Mark P.|editor2-last=Olson|editor2-first=James M.|publisher=Academic Press |chapter-url=http://psych.colorado.edu/~vanboven/VanBoven/Publications_files/VanBovenAdvancesVol48.pdf|archive-url=https://web.archive.org/web/20160528200926/http://psych.colorado.edu/~vanboven/VanBoven/Publications_files/VanBovenAdvancesVol48.pdf|url-status=dead|archive-date=2016-05-28}}</ref>\n")
-  (bias . "*[[Hard–easy effect]], the tendency to overestimate one's ability to accomplish hard tasks, and underestimate one's ability to accomplish easy tasks.<ref name=\"HilbertPsychBul\" /><ref>{{cite journal | vauthors = Lichtenstein S, Fischhoff B | year = 1977 | title = Do those who know more also know more about how much they know? | journal = Organizational Behavior and Human Performance | volume = 20 | issue = 2| pages = 159–183 | doi = 10.1016/0030-5073(77)90001-0 }}</ref><ref>{{cite journal | vauthors = Merkle EC | title = The disutility of the hard-easy effect in choice confidence | journal = Psychonomic Bulletin & Review | volume = 16 | issue = 1 | pages = 204–13 | date = February 2009 | pmid = 19145033 | doi = 10.3758/PBR.16.1.204 | doi-access = free }}</ref><ref>{{cite journal | vauthors = Juslin P, Winman A, Olsson H | title = Naive empiricism and dogmatism in confidence research: a critical examination of the hard-easy effect | journal = Psychological Review | volume = 107 | issue = 2 | pages = 384–96 | date = April 2000 | pmid = 10789203 | doi = 10.1037/0033-295x.107.2.384 }}</ref>\n")
-  (bias . "*[[Illusion of explanatory depth]], the tendency to believe that one understands a topic much better than one actually does.<ref name=\"Edge2017\">{{cite web | title=2017 : What scientific term or concept ought to be more widely known? | author=Waytz, Adam | website=[[Edge.org]] | date=26 January 2022 | url=https://www.edge.org/response-detail/27117 | access-date=26 January 2022}}</ref><ref name=\"Rozenblit2002\"/> The effect is strongest for explanatory knowledge, whereas people tend to be better at self-assessments for procedural, narrative, or factual knowledge.<ref name=\"Rozenblit2002\">{{cite journal | last=Rozenblit | first=Leonid | last2=Keil | first2=Frank | title=The misunderstood limits of folk science: an illusion of explanatory depth | journal=Cognitive Science | publisher=Wiley | volume=26 | issue=5 | year=2002 | issn=0364-0213 | doi=10.1207/s15516709cog2605_1 | pages=521–562}}</ref><ref name=\"Mills2004\">{{cite journal | last=Mills | first=Candice M | last2=Keil | first2=Frank C | title=Knowing the limits of one's understanding: The development of an awareness of an illusion of explanatory depth | journal=Journal of Experimental Child Psychology | publisher=Elsevier BV | volume=87 | issue=1 | year=2004 | issn=0022-0965 | doi=10.1016/j.jecp.2003.09.003 | pages=1–32}}</ref>\n")
-  (bias . "*[[Objectivity illusion]], the phenomena where people tend to believe that they are more objective and unbiased than others. This bias can apply to itself - where people are able to see when others are affected by the objectivity illusion, but unable to see it in themselves. See also ''[[bias blind spot]].''<ref>{{Cite APA Dictionary of Psychology|title=Objectivity illusion|access-date=2022-01-15|shortlink=objectivity-illusion}}</ref>\n")))
-(category
- (name . "Truthiness")
- (description . category-description)
- (biases
-  (bias . "*[[Belief bias]], an effect where someone's evaluation of the logical strength of an argument is biased by the believability of the conclusion.<ref>{{cite journal | vauthors = Klauer KC, Musch J, Naumer B | title = On belief bias in syllogistic reasoning | journal = Psychological Review | volume = 107 | issue = 4 | pages = 852–84 | date = October 2000 | pmid = 11089409 | doi = 10.1037/0033-295X.107.4.852 }}</ref>\n")
-  (bias . "*[[Illusory truth effect]], the tendency to believe that a statement is true if it is [[Fluency heuristic|easier to process]], or if it has been [[Processing fluency|stated multiple times]], regardless of its actual veracity. These are specific cases of [[truthiness]].\n")
-  (bias . "*[[Rhyme as reason effect]], where rhyming statements are perceived as more truthful.  \n")
-  (bias . "*[[Subjective validation]], where statements are perceived as true if a subject's belief demands it to be true. Also assigns perceived connections between coincidences. (Compare [[confirmation bias]].)\n")))
-(category
- (name . "Other")
- (description . category-description)
- (biases
-  (bias . "*[[Authority bias]], the tendency to attribute greater accuracy to the opinion of an authority figure (unrelated to its content) and be more influenced by that opinion.<ref>{{cite journal | vauthors = Milgram S | title = Behavioral Study of Obedience | journal = Journal of Abnormal Psychology | volume = 67 | issue = 4 | pages = 371–8 | date = October 1963 | pmid = 14049516 | doi = 10.1037/h0040525 }}</ref>\n")
-  (bias . "*[[Cheerleader effect]], the tendency for people to appear more attractive in a group than in isolation.<ref>{{cite journal | vauthors = Walker D, Vul E | title = Hierarchical encoding makes individuals in a group seem more attractive | journal = Psychological Science | volume = 25 | issue = 1 | pages = 230–5 | date = January 2014 | pmid = 24163333 | doi = 10.1177/0956797613497969 | s2cid = 16309135 }}</ref>\n")
-  (bias . "*[[Halo effect]], the tendency for a person's positive or negative traits to \"spill over\" from one personality area to another in others' perceptions of them (see also [[physical attractiveness stereotype]]).<ref>{{harvnb |Baron|1994|p=275}}</ref>\n")))
+  (bias
+   (name . "Authority bias")
+   (description . "the tendency to attribute greater accuracy to the opinion of an authority figure (unrelated to its content) and be more influenced by that opinion.<ref>{{cite journal | vauthors = Milgram S | title = Behavioral Study of Obedience | journal = Journal of Abnormal Psychology | volume = 67 | issue = 4 | pages = 371–8 | date = October 1963 | pmid = 14049516 | doi = 10.1037/h0040525 }}</ref>\n"))
+  (bias
+   (name . "Cheerleader effect")
+   (description . "the tendency for people to appear more attractive in a group than in isolation.<ref>{{cite journal | vauthors = Walker D, Vul E | title = Hierarchical encoding makes individuals in a group seem more attractive | journal = Psychological Science | volume = 25 | issue = 1 | pages = 230–5 | date = January 2014 | pmid = 24163333 | doi = 10.1177/0956797613497969 | s2cid = 16309135 }}</ref>\n"))
+  (bias
+   (name . "Halo effect")
+   (description . "the tendency for a person's positive or negative traits to \"spill over\" from one personality area to another in others' perceptions of them (see also [[physical attractiveness stereotype]]).<ref>{{harvnb |Baron|1994|p=275}}</ref>\n"))))
 (category
  (name . "Misattribution of memory")
- (description . category-description)
+ (description . "The misattributions include:\n")
  (biases
-  (bias . "* [[Cryptomnesia]], where a memory is mistaken for novel thought or imagination, because there is no subjective experience of it being a memory.<ref name=\"schacter\">{{cite journal | vauthors = Schacter DL | title = The seven sins of memory. Insights from psychology and cognitive neuroscience | journal = The American Psychologist | volume = 54 | issue = 3 | pages = 182–203 | date = March 1999 | pmid = 10199218 | doi = 10.1037/0003-066X.54.3.182 | s2cid = 14882268 | url = https://semanticscholar.org/paper/379468e541ac77a984ef5bf8c69d70a4824473e5 }}</ref>\n")
-  (bias . "* [[False memory]], where imagination is mistaken for a memory.\n")
-  (bias . "* [[Social cryptomnesia]], a failure by people and society in general to remember the origin of a change, in which people know that a change has occurred in society, but forget how this change occurred; that is, the steps that were taken to bring this change about, and who took these steps. This has led to reduced social credit towards the minorities who made major sacrifices that led to the change in societal values.<ref name=\"Butera 2018\">{{Citation|last1=Butera |first1=Fabrizio |title=Influence without credit: How successful minorities respond to social cryptomnesia |date=August 2009|work=Coping with Minority Status|pages=311–332|publisher=Cambridge University Press |language=en |doi=10.1017/cbo9780511804465.015|isbn=9780511804465 |last2=Levine |first2=John M. |last3=Vernet |first3=Jean-Pierre}}</ref>\n")
-  (bias . "* [[Misattribution of memory#Source confusion|Source confusion]] - confusing episodic memories with other information, creating distorted memories.<ref name=\"Lieberman2011\">{{cite book| first = David A. | last = Lieberman | name-list-style = vanc |title=Human Learning and Memory |url={{Google books |plainurl=yes |id=mJsV-Vr8Q6sC |page=432 }} |date=8 December 2011|publisher=Cambridge University Press|isbn=978-1-139-50253-5|page=432}}</ref>\n")
-  (bias . "* [[Suggestibility#External|Suggestibility]], where ideas suggested by a questioner are mistaken for memory.\n")
-  (bias . "* The [[Perky effect]], where real images can influence imagined images, or be misremembered as imagined rather than real\n")))
+  (bias
+   (name . "Cryptomnesia")
+   (description . "where a memory is mistaken for novel thought or imagination, because there is no subjective experience of it being a memory.<ref name=\"schacter\">{{cite journal | vauthors = Schacter DL | title = The seven sins of memory. Insights from psychology and cognitive neuroscience | journal = The American Psychologist | volume = 54 | issue = 3 | pages = 182–203 | date = March 1999 | pmid = 10199218 | doi = 10.1037/0003-066X.54.3.182 | s2cid = 14882268 | url = https://semanticscholar.org/paper/379468e541ac77a984ef5bf8c69d70a4824473e5 }}</ref>\n"))
+  (bias
+   (name . "False memory")
+   (description . "where imagination is mistaken for a memory.\n"))
+  (bias
+   (name . "Social cryptomnesia")
+   (description . "a failure by people and society in general to remember the origin of a change, in which people know that a change has occurred in society, but forget how this change occurred; that is, the steps that were taken to bring this change about, and who took these steps. This has led to reduced social credit towards the minorities who made major sacrifices that led to the change in societal values.<ref name=\"Butera 2018\">{{Citation|last1=Butera |first1=Fabrizio |title=Influence without credit: How successful minorities respond to social cryptomnesia |date=August 2009|work=Coping with Minority Status|pages=311–332|publisher=Cambridge University Press |language=en |doi=10.1017/cbo9780511804465.015|isbn=9780511804465 |last2=Levine |first2=John M. |last3=Vernet |first3=Jean-Pierre}}</ref>\n"))
+  (bias
+   (name . "Misattribution of memory#Source confusion|Source confusion")
+   (description . "- confusing episodic memories with other information, creating distorted memories.<ref name=\"Lieberman2011\">{{cite book| first = David A. | last = Lieberman | name-list-style = vanc |title=Human Learning and Memory |url={{Google books |plainurl=yes |id=mJsV-Vr8Q6sC |page=432 }} |date=8 December 2011|publisher=Cambridge University Press|isbn=978-1-139-50253-5|page=432}}</ref>\n"))
+  (bias
+   (name . "Suggestibility#External|Suggestibility")
+   (description . "where ideas suggested by a questioner are mistaken for memory.\n"))
+  nil))
 (category
  (name . "Other")
- (description . category-description)
- (biases
-  (bias . "* {{annotated link|Affective forecasting}}\n")
-  (bias . "* {{annotated link|Anecdotal evidence}}\n")
-  (bias . "* {{annotated link|Attribution (psychology)}}\n")
-  (bias . "* {{annotated link|Black swan theory}}\n")
-  (bias . "* {{annotated link|Chronostasis}}\n")
-  (bias . "* {{annotated link|Cognitive distortion}}\n")
-  (bias . "* {{annotated link|Cross-race effect}}\n")
-  (bias . "* {{annotated link|Defence mechanism}}\n")
-  (bias . "* {{annotated link|Dysrationalia}}\n")
-  (bias . "* {{annotated link|Fear, uncertainty, and doubt}}\n")
-  (bias . "* {{annotated link|Feedback}}\n")
-  (bias . "* {{annotated link|Heuristics in judgment and decision making}}\n")
-  (bias . "* {{annotated link|Impostor syndrome}}\n")
-  (bias . "* {{annotated link|Index of public relations-related articles}}\n")
-  (bias . "* {{annotated link|List of common misconceptions}}\n")
-  (bias . "* {{annotated link|List of fallacies}}\n")
-  (bias . "* {{annotated link|List of maladaptive schemas}}\n")
-  (bias . "* {{annotated link|List of memory biases}}\n")
-  (bias . "* {{annotated link|List of psychological effects}}\n")
-  (bias . "* {{annotated link|iSheep#Behavioural patterns}} (references multiple cognitive biasses)\n")
-  (bias . "* {{annotated link|Media bias}}\n")
-  (bias . "* {{annotated link|Mind projection fallacy}}\n")
-  (bias . "* {{annotated link|Motivated reasoning}}\n")
-  (bias . "* {{annotated link|Observational error|aka=Systematic bias}}\n")
-  (bias . "* {{annotated link|Outline of public relations}}\n")
-  (bias . "* {{annotated link|Outline of thought}}\n")
-  (bias . "* {{annotated link|Pollyanna principle}}\n")
-  (bias . "* {{annotated link|Positive feedback}}\n")
-  (bias . "* {{annotated link|Prevalence effect}}\n")
-  (bias . "* {{annotated link|Propaganda}}\n")
-  (bias . "* {{annotated link|Publication bias}}\n")
-  (bias . "* {{annotated link|Recall bias}}\n")
-  (bias . "* {{annotated link|Self-handicapping}}\n")))
+ (description)
+ (biases))
 #+end_example
 
 
