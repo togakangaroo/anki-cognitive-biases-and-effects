@@ -329,7 +329,7 @@ I was going to just go ahead and export these to a document using tangling but t
     (write-region (point) (org-babel-result-end) "./biases.org"))
 #+end_src
 
-That was pretty easy
+Well that was surprisingly easy
 
 * Setup and run Anki Generator
   
@@ -339,3 +339,22 @@ That was pretty easy
     (async-shell-command "pyenv exec pipenv install")
   #+end_src
 
+  Ok so then run it I guess 
+
+  #+begin_src shell :dir ./generator 
+    pyenv exec pipenv run python generate-anki-from-org.py
+  #+end_src
+
+  #+RESULTS:
+  : Wrote 90330 bytes to cognitive_biases.apkg
+
+  Opening that up with anki
+
+  #+begin_src emacs-lisp :results silent
+    (async-shell-command "anki ./generator/cognitive_biases.apkg")
+  #+end_src
+
+
+  And that actually works! Yay.
+
+  Next to work on cleanup
