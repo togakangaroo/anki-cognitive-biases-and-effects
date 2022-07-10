@@ -11,25 +11,26 @@ def generate_deck():
     fields=[
         {'name': 'Question'},
         {'name': 'Answer'},
+        {'name': 'Link'}
     ],
     templates=[
         {
         'name': 'Card 1',
         'qfmt': '{{Question}}',
-        'afmt': '{{FrontSide}}<hr id="answer">{{Answer}}',
+        'afmt': '{{FrontSide}}<hr id="answer">{{Answer}}<br/><a href="{{Link}} target=_blank>More</a>',
         },
     ])
     deck = genanki.Deck(1312277299, 'Cognitive Biases')
-    two_col_org_row = re.compile('^\\s*\\|\\s*(.*?)\\s*\\|\\s*(.*?)\\s*\\|\\s*$')
-    with open(f'../biases.org', 'r') as f:
+    two_col_org_row = re.compile('^\\s*\\|\\s*(.*?)\\s*\\|\\s*(.*?)\\s*\\|\\s*(.*?)\\s*\\|\\s*$')
+    with open(f'../README.org', 'r') as f:
         extracted_cells = (m.groups()
                         for m in (two_col_org_row.match(l)
                                     for l in f.readlines())
                         if m)
-        term_definitions = (g for g in extracted_cells if len(g) == 2)
+        term_link_definitions = (g for g in extracted_cells if len(g) == 2)
 
-        notes = (genanki.Note(model=term_model, fields=[term, definition])
-                for (term, definition) in term_definitions)
+        notes = (genanki.Note(model=term_model, fields=[term, definition, link])
+                for (term, link, definition) in term_link_definitions)
         for note in notes:
             deck.add_note(note)
 
