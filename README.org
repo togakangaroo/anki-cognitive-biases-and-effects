@@ -183,11 +183,11 @@ An [[id:e4001525-d16c-4632-afc9-0813bf574b4b][Anki]] deck to memorize informatio
   Ok so then run it I guess 
 
   #+begin_src shell :dir ./generator 
-    pyenv exec pipenv run python generate-anki-from-org.py
+    pyenv exec pipenv run python generate_anki_from_org.py
   #+end_src
 
   #+RESULTS:
-  : Wrote 53466 bytes to cognitive_biases.apkg
+  : Wrote 119002 bytes to cognitive_biases.apkg
 
 
   Opening that up with anki
