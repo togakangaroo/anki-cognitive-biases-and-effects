@@ -4,8 +4,13 @@ import os
 from contextlib import suppress
 from typing import Iterator
 
-org_table_header_row = re.compile('^\\s*\\|-+\\+-+\\+-+\\|\\s*$')
-org_table_row = re.compile('^\\s*\\|\\s*(.*?)\\s*\\|\\s*(.*?)\\s*\\|\\s*(.*?)\\s*\\|\\s*$')
+org_table_header_row = re.compile('^\\s*\\|' '-+\\+-+\\+-+\\+-+' '\\|\\s*$')
+org_table_row = re.compile('^\\s*\\|'
+                           '\\s*(.*?)\\s*\\|'
+                           '\\s*(.*?)\\s*\\|'
+                           '\\s*(.*?)\\s*\\|'
+                           '\\s*(.*?)\\s*\\|'
+                           '\\s*$')
 
 term_model = genanki.Model(
     505739646,
@@ -49,12 +54,12 @@ def _read_notes(lines: Iterator[str]):
         m = org_table_row.match(line)
         cells = m and m.groups() or tuple()
 
-        if len(cells) != 3:
+        if len(cells) != 4:
             continue
 
-        term, link, definition = cells
+        term, link, definition, guid = cells
 
-        yield genanki.Note(model=term_model, fields=[term, definition, link])
+        yield genanki.Note(model=term_model, fields=[term, definition, link], guid=guid)
 
 
 def generate_deck():
