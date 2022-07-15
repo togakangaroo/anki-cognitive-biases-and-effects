@@ -1,5 +1,10 @@
+#+begin_export html
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a><br /><span xmlns:dct="http://purl.org/dc/terms/" property="dct:title">Technical Terms Flashcard Deck</span> is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Attribution-ShareAlike 4.0 International License</a>.
+#+end_export
 
-An [[id:e4001525-d16c-4632-afc9-0813bf574b4b][Anki]] deck to memorize information about cognitive bias
+An [[id:e4001525-d16c-4632-afc9-0813bf574b4b][Anki]] deck to memorize information about cognitive biases and psychological effects.
+
+The (untested) hypothesis is that easy memory-access to all the ways the brain can lead you astray when formulating thoughts will make it easier for you to avoid pitfalls.
 
 
 * The list
